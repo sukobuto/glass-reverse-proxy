@@ -4,7 +4,8 @@
   "description": "HTTP reverse proxy with communication monitoring.",
   "main": "run.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "parcel client/index.html"
   },
   "repository": {
     "type": "git",
