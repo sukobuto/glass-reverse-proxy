@@ -1,9 +1,12 @@
 const EventEmitter = require('events').EventEmitter;
 const WebSocketServer = require('websocket').server;
 const http = require('http');
+const httpProxy = require('http-proxy');
 const nodeStatic = require('node-static');
 
 const monitorPort = 8888;
+const proxyPort = 7777;
+const proxyTarget = 'http://localhost:8080';
 const ev = new EventEmitter;
 const file = new nodeStatic.Server('./dist', {
     indexFile: "index.html"
@@ -18,7 +21,7 @@ const monitor = http.createServer((request, response) => {
         file.serve(request, response);
     }).resume();
 }).listen(monitorPort, () => {
-    log(`Server (monitor) is listening on port {monitorPort}`);
+    log(`Server (monitor) is listening on port ${monitorPort}`);
 });
 
 wsServer = new WebSocketServer({
@@ -64,6 +67,49 @@ wsServer.on('request', request => {
     });
 });
 
-setInterval(() => {
-    ev.emit('publish', 'hello from server!');
-}, 5000);
+const proxy = httpProxy.createProxyServer({
+    target: proxyTarget
+});
+
+proxy.on('proxyReq', (proxyReq, req, res, options) => {
+    const start = new Date();
+    let body = null;
+    req.on('data', chunk => {
+        body = (body == null ? '' : body) + chunk;
+    });
+    req.on('end', () => {
+        const end = new Date();
+        console.log({
+            'headers': req.headers,
+            'url': req.url,
+            'httpVersion': req.httpVersion,
+            'method': req.method,
+            'body': body,
+            'start': start,
+            'end': end,
+        });
+    });
+});
+proxy.on('proxyRes', (proxyRes, req, res) => {
+    const start = new Date();
+    let body = null;
+    proxyRes.on('data', chunk => {
+        body = (body == null ? '' : body) + chunk;
+    });
+    proxyRes.on('end', () => {
+        const end = new Date();
+        console.log({
+            'httpVersion': proxyRes.httpVersion,
+            'headers': proxyRes.headers,
+            'statusCode': proxyRes.statusCode,
+            'statusMessage': proxyRes.statusMessage,
+            'body': body,
+            'start': start,
+            'end': end,
+        });
+    });
+});
+proxy.listen(proxyPort, () => {
+    log(`Server (proxy) is listening on port ${proxyPort}`);
+});
+
