@@ -36,7 +36,8 @@ function originIsAllowed(origin) {
 function onMessage(connection, message) {
     if (message.type === 'utf8') {
         log('Received message: ' + message.utf8Data);
-        connection.sendUTF(message.utf8Data);
+        // connection.sendUTF(message.utf8Data);
+        ev.emit('publish', message.utf8Data);
     }
 }
 
@@ -51,7 +52,18 @@ wsServer.on('request', request => {
     log('Connection accepted. Peer: ' + connection.remoteAddress);
 
     connection.on('message', message => onMessage(connection, message));
+
+    function onPublish (message) {
+        connection.sendUTF(message);
+    }
+    ev.on('publish', onPublish);
+
     connection.on('close', (reasonCode, description) => {
         log('Peer ' + connection.remoteAddress + ' disconnected.');
+        ev.removeListener('publish', onPublish);
     });
 });
+
+setInterval(() => {
+    ev.emit('publish', 'hello from server!');
+}, 5000);

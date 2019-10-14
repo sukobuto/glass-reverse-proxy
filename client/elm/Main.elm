@@ -11,7 +11,6 @@ import Cmd.Extra exposing (withCmd, withNoCmd)
 import Html exposing (Html, main_, text, form, div)
 import Html.Attributes exposing (class, value, type_, action)
 import Html.Events exposing (onClick, onInput, onSubmit)
-import Http
 import WebSocket exposing (Event(..))
 
 
@@ -205,4 +204,4 @@ messageControls model =
 
 messageInfo : String -> Html Msg
 messageInfo message =
-    box [] [ text message ]
+    div [] [ text message ]
