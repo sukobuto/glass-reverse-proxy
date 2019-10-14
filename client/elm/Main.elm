@@ -53,7 +53,7 @@ init _ =
     , receivedMessages = []
     , errorMsg = ""
     }
-    |> withCmd (WebSocket.connect "wss://echo.websocket.org" [])
+    |> withCmd (WebSocket.connect "ws://localhost:8888" [ "echo-protocol" ])
 
 
 
@@ -205,4 +205,4 @@ messageControls model =
 
 messageInfo : String -> Html Msg
 messageInfo message =
-    div [] [ text message ]
+    box [] [ text message ]
