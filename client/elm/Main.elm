@@ -1,10 +1,16 @@
 module Main exposing (main)
 
 import Browser
+import Bulma.CDN exposing (stylesheet)
+import Bulma.Modifiers exposing (..)
+import Bulma.Elements exposing (..)
+import Bulma.Columns exposing (..)
+import Bulma.Layout exposing (..)
+import Bulma.Form exposing (connectedFields, controlInput, controlInputModifiers, field, label, control, controlModifiers)
 import Cmd.Extra exposing (withCmd, withNoCmd)
-import Html exposing (Html, button, div, input, pre, text)
-import Html.Attributes exposing (class, value)
-import Html.Events exposing (onClick, onInput)
+import Html exposing (Html, main_, text, form, div)
+import Html.Attributes exposing (class, value, type_, action)
+import Html.Events exposing (onClick, onInput, onSubmit)
 import Http
 import WebSocket exposing (Event(..))
 
@@ -42,7 +48,7 @@ type SocketStatus
 init : () -> ( Model, Cmd Msg )
 init _ =
     { socketInfo = Unopened
-    , toSend = "ping!"
+    , toSend = ""
     , sentMessages = []
     , receivedMessages = []
     , errorMsg = ""
@@ -81,7 +87,10 @@ update msg model =
         SendString ->
             case model.socketInfo of
                 Connected socketInfo ->
-                    { model | sentMessages = model.toSend :: model.sentMessages }
+                    { model
+                    | sentMessages = model.toSend :: model.sentMessages
+                    , toSend = ""
+                    }
                     |> withCmd ( WebSocket.sendString socketInfo model.toSend )
 
                 _ ->
@@ -132,27 +141,28 @@ subscriptions model =
 
 view : Model -> Html Msg
 view model =
-    div []
-        [ connectionState model
+    main_ []
+        [ stylesheet
+        , connectionState model
         , stringMsgControls model
         ]
 
 
 connectionState : Model -> Html Msg
 connectionState model =
-    div [ class "connectionState" ]
+    container []
         [ case model.socketInfo of
             Unopened ->
                 text "Connecting..."
 
             Connected info ->
-                div []
+                box []
                     [ text "Connected to"
                     , text info.url
                     ]
 
             Closed unsent ->
-                div []
+                box []
                     [ text " Closed with "
                     , text (String.fromInt unsent)
                     , text " bytes unsent."
@@ -162,21 +172,34 @@ connectionState model =
 
 stringMsgControls : Model -> Html Msg
 stringMsgControls model =
-    div []
-        [ div [ class "controls" ]
-            [ button [ onClick SendString ] [ text "Send" ]
-            , input [ onInput SendStringChanged, value model.toSend ] []
+    container
+        []
+        [ form
+            [ onSubmit SendString, action "javascript:void(0);" ]
+            [ messageControls model ]
+        , columns columnsModifiers []
+            [ column columnModifiers []
+                [ div [ class "sent" ]
+                    (div [ class "header" ] [ text "Sent" ]
+                        :: List.map messageInfo model.sentMessages
+                    )
+                ]
+            , column columnModifiers []
+                [ div [ class "received" ]
+                    (div [ class "header" ] [ text "Received" ]
+                        :: List.map messageInfo model.receivedMessages
+                    )
+                ]
             ]
-        , div [ class "stringMessages" ]
-            [ div [ class "sent" ]
-                (div [ class "header" ] [ text "Sent" ]
-                    :: List.map messageInfo model.sentMessages
-                )
-            , div [ class "received" ]
-                (div [ class "header" ] [ text "Received" ]
-                    :: List.map messageInfo model.receivedMessages
-                )
-            ]
+        ]
+
+
+messageControls : Model -> Html Msg
+messageControls model =
+    connectedFields Left []
+        [ controlInput controlInputModifiers [] [ onInput SendStringChanged, value model.toSend ] []
+        , control controlModifiers []
+            [ button buttonModifiers [ type_ "submit" ] [ text "Send" ] ]
         ]
 
 

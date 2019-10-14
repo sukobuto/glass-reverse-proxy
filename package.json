@@ -24,6 +24,7 @@
   },
   "homepage": "https://github.com/sukobuto/glass-reverse-proxy#readme",
   "dependencies": {
+    "node-static": "^0.7.11",
     "websocket": "^1.0.30"
   },
   "devDependencies": {
