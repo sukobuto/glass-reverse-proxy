@@ -7,11 +7,16 @@ import Bulma.Elements exposing (..)
 import Bulma.Columns exposing (..)
 import Bulma.Layout exposing (..)
 import Bulma.Form exposing (connectedFields, controlInput, controlInputModifiers, field, label, control, controlModifiers)
-import Cmd.Extra exposing (withCmd, withNoCmd)
-import Html exposing (Html, main_, text, form, div)
+import Cmd.Extra exposing (withCmd, withNoCmd, withCmds)
+import Html exposing (Html, main_, text, form, div, p)
 import Html.Attributes exposing (class, value, type_, action)
 import Html.Events exposing (onClick, onInput, onSubmit)
+import Json.Decode exposing (Error(..))
+import Task
 import WebSocket exposing (Event(..))
+import Monitor exposing (HeaderEntry, RequestResponse(..), RequestData, ResponseData, decodeRequestResponse)
+import Time exposing (Posix, here, toHour, toMillis, toMinute, toSecond, utc)
+
 
 
 -- MAIN
@@ -34,7 +39,9 @@ type alias Model =
     , toSend : String
     , sentMessages : List String
     , receivedMessages : List String
+    , requestResponses: List RequestResponse
     , errorMsg : String
+    , zone : Time.Zone
     }
 
 
@@ -50,9 +57,14 @@ init _ =
     , toSend = ""
     , sentMessages = []
     , receivedMessages = []
+    , requestResponses = []
     , errorMsg = ""
+    , zone = utc
     }
-    |> withCmd (WebSocket.connect "ws://localhost:8888" [ "echo-protocol" ])
+    |> withCmds
+        [ (WebSocket.connect "ws://localhost:8888" [ "echo-protocol" ])
+        , Task.perform AdjustTimeZone Time.here
+        ]
 
 
 
@@ -65,6 +77,7 @@ type Msg
     | SendStringChanged String
     | ReceivedString String
     | SendString
+    | AdjustTimeZone Time.Zone
     | Error String
 
 
@@ -97,7 +110,15 @@ update msg model =
                     |> withNoCmd
 
         ReceivedString message ->
-            { model | receivedMessages = message :: model.receivedMessages }
+            case (decodeRequestResponse message) of
+                Ok requestResponse ->
+                    { model | requestResponses = requestResponse :: model.requestResponses }
+                    |> withNoCmd
+                _ ->
+                    model |> withNoCmd
+
+        AdjustTimeZone newZone ->
+            { model | zone = newZone }
             |> withNoCmd
 
         Error errMsg ->
@@ -143,7 +164,7 @@ view model =
     main_ []
         [ stylesheet
         , connectionState model
-        , stringMsgControls model
+        , requestResponseView model.zone model.requestResponses
         ]
 
 
@@ -169,6 +190,17 @@ connectionState model =
         ]
 
 
+requestResponseView : Time.Zone -> List RequestResponse -> Html Msg
+requestResponseView zone requestResponses =
+    container []
+        (List.map
+            (\requestResponse ->
+                requestResponseInfo zone requestResponse
+            )
+            requestResponses
+        )
+
+
 stringMsgControls : Model -> Html Msg
 stringMsgControls model =
     container
@@ -191,6 +223,49 @@ stringMsgControls model =
                 ]
             ]
         ]
+
+
+requestResponseInfo : Time.Zone -> RequestResponse -> Html Msg
+requestResponseInfo zone requestResponse =
+    box []
+    [ case requestResponse of
+        Request data ->
+            requestInfo zone data
+
+        Response data ->
+            responseInfo zone data
+    ]
+
+
+requestInfo : Time.Zone -> RequestData -> Html Msg
+requestInfo zone data =
+    div
+    []
+    [ p [] [text ("start: " ++ (formatTime zone data.start))]
+    , p [] [text ("end: " ++ (formatTime zone data.end))]
+    , p [] [text ("url: " ++ data.url)]
+    ]
+
+
+responseInfo : Time.Zone -> ResponseData -> Html Msg
+responseInfo zone data =
+    div
+    []
+    [ p [] [text ("start: " ++ (formatTime zone data.start))]
+    , p [] [text ("end: " ++ (formatTime zone data.end))]
+    , p [] [text ("status: " ++ (String.fromInt data.statusCode))]
+    ]
+
+
+formatTime : Time.Zone -> Posix -> String
+formatTime zone time =
+    let
+        hour = String.fromInt (toHour zone time)
+        minute = String.fromInt (toMinute zone time)
+        second = String.fromInt (toSecond zone time)
+        millis = String.fromInt (toMillis zone time)
+    in
+    hour ++ ":" ++ minute ++ ":" ++ second ++ "." ++ millis
 
 
 messageControls : Model -> Html Msg

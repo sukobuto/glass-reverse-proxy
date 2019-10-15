@@ -26,6 +26,7 @@
   "dependencies": {
     "http-proxy": "^1.18.0",
     "node-static": "^0.7.11",
+    "ulid": "^2.3.0",
     "websocket": "^1.0.30"
   },
   "devDependencies": {
