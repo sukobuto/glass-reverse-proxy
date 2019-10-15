@@ -14,7 +14,7 @@ import Html.Events exposing (onClick, onInput, onSubmit)
 import Json.Decode exposing (Error(..))
 import Task
 import WebSocket exposing (Event(..))
-import Monitor exposing (HeaderEntry, RequestResponse(..), RequestData, ResponseData, decodeRequestResponse)
+import Monitor exposing (HeaderEntry, CommunicateEvent(..), RequestData, ResponseData, decodeRequestResponse)
 import Time exposing (Posix, here, toHour, toMillis, toMinute, toSecond, utc)
 
 
@@ -39,7 +39,7 @@ type alias Model =
     , toSend : String
     , sentMessages : List String
     , receivedMessages : List String
-    , requestResponses: List RequestResponse
+    , requestAndResponses: List RequestAndResponse
     , errorMsg : String
     , zone : Time.Zone
     }
@@ -51,13 +51,19 @@ type SocketStatus
     | Closed Int
 
 
+type alias RequestAndResponse =
+    { requestData: RequestData
+    , responseData: Maybe ResponseData
+    }
+
+
 init : () -> ( Model, Cmd Msg )
 init _ =
     { socketInfo = Unopened
     , toSend = ""
     , sentMessages = []
     , receivedMessages = []
-    , requestResponses = []
+    , requestAndResponses = []
     , errorMsg = ""
     , zone = utc
     }
@@ -111,9 +117,22 @@ update msg model =
 
         ReceivedString message ->
             case (decodeRequestResponse message) of
-                Ok requestResponse ->
-                    { model | requestResponses = requestResponse :: model.requestResponses }
-                    |> withNoCmd
+                Ok communicateEvent ->
+                    case communicateEvent of
+                        Request data ->
+                            { model
+                            | requestAndResponses =
+                                { requestData = data, responseData = Nothing }
+                                :: model.requestAndResponses
+                            }
+                            |> withNoCmd
+
+                        Response data ->
+                            { model
+                            | requestAndResponses = (attachResponse model.requestAndResponses data)
+                            }
+                            |> withNoCmd
+
                 _ ->
                     model |> withNoCmd
 
@@ -124,6 +143,18 @@ update msg model =
         Error errMsg ->
             { model | errorMsg = errMsg }
             |> withNoCmd
+
+
+attachResponse : List RequestAndResponse -> ResponseData -> List RequestAndResponse
+attachResponse requestAndResponses responseData =
+    List.map (attachResponseHelper responseData) requestAndResponses
+
+attachResponseHelper : ResponseData -> RequestAndResponse -> RequestAndResponse
+attachResponseHelper responseData requestAndResponse =
+    if requestAndResponse.requestData.id == responseData.id then
+        { requestAndResponse | responseData = Just responseData }
+    else
+        requestAndResponse
 
 
 -- SUBSCRIPTIONS
@@ -164,7 +195,7 @@ view model =
     main_ []
         [ stylesheet
         , connectionState model
-        , requestResponseView model.zone model.requestResponses
+        , requestResponseView model.zone model.requestAndResponses
         ]
 
 
@@ -190,14 +221,14 @@ connectionState model =
         ]
 
 
-requestResponseView : Time.Zone -> List RequestResponse -> Html Msg
-requestResponseView zone requestResponses =
+requestResponseView : Time.Zone -> List RequestAndResponse -> Html Msg
+requestResponseView zone requestAndResponses =
     container []
         (List.map
             (\requestResponse ->
                 requestResponseInfo zone requestResponse
             )
-            requestResponses
+            requestAndResponses
         )
 
 
@@ -225,15 +256,15 @@ stringMsgControls model =
         ]
 
 
-requestResponseInfo : Time.Zone -> RequestResponse -> Html Msg
-requestResponseInfo zone requestResponse =
+requestResponseInfo : Time.Zone -> RequestAndResponse -> Html Msg
+requestResponseInfo zone requestAndResponse =
     box []
-    [ case requestResponse of
-        Request data ->
-            requestInfo zone data
-
-        Response data ->
+    [ requestInfo zone requestAndResponse.requestData
+    , case requestAndResponse.responseData of
+        Just data ->
             responseInfo zone data
+        Nothing ->
+            noResponse
     ]
 
 
@@ -245,6 +276,13 @@ requestInfo zone data =
     , p [] [text ("end: " ++ (formatTime zone data.end))]
     , p [] [text ("url: " ++ data.url)]
     ]
+
+
+noResponse : Html Msg
+noResponse =
+    div
+    []
+    [ text "no response." ]
 
 
 responseInfo : Time.Zone -> ResponseData -> Html Msg

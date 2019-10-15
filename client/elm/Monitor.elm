@@ -1,4 +1,4 @@
-module Monitor exposing (HeaderEntry, RequestResponse(..), RequestData, ResponseData, decodeRequestResponse)
+module Monitor exposing (HeaderEntry, CommunicateEvent(..), RequestData, ResponseData, decodeRequestResponse)
 
 import Json.Decode as Decode exposing (Decoder, andThen, decodeString, fail, field, int, list, map, map2, map8, nullable, string)
 import Time exposing (Posix, millisToPosix)
@@ -34,7 +34,7 @@ type alias ResponseData =
     }
 
 
-type RequestResponse
+type CommunicateEvent
     = Request RequestData
     | Response ResponseData
 
@@ -43,7 +43,7 @@ decodeRequestResponse json =
     decodeString requestResponseDecoder json
 
 
-requestResponseDecoder : Decoder RequestResponse
+requestResponseDecoder : Decoder CommunicateEvent
 requestResponseDecoder =
     field "type" string
         |> andThen
@@ -58,7 +58,7 @@ requestResponseDecoder =
             )
 
 
-requestDecoder : Decoder RequestResponse
+requestDecoder : Decoder CommunicateEvent
 requestDecoder =
     map8 RequestData
         (field "id" string)
@@ -72,7 +72,7 @@ requestDecoder =
         |> map Request
 
 
-responseDecoder : Decoder RequestResponse
+responseDecoder : Decoder CommunicateEvent
 responseDecoder =
     map8 ResponseData
         (field "id" string)
