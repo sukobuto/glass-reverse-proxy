@@ -8,14 +8,16 @@ import Bulma.Columns exposing (..)
 import Bulma.Layout exposing (..)
 import Bulma.Form exposing (connectedFields, controlInput, controlInputModifiers, field, label, control, controlModifiers)
 import Cmd.Extra exposing (withCmd, withNoCmd, withCmds)
-import Html exposing (Html, main_, text, form, div, p)
-import Html.Attributes exposing (class, value, type_, action)
+import Update.Extra exposing (andThen)
+import Html exposing (Html, main_, text, form, div, p, strong)
+import Html.Attributes exposing (action, class, id, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
 import Json.Decode exposing (Error(..))
 import Task
 import WebSocket exposing (Event(..))
 import Monitor exposing (HeaderEntry, CommunicateEvent(..), RequestData, ResponseData, decodeRequestResponse)
 import Time exposing (Posix, here, toHour, toMillis, toMinute, toSecond, utc)
+import InfiniteList
 
 
 
@@ -36,10 +38,9 @@ main =
 
 type alias Model =
     { socketInfo : SocketStatus
-    , toSend : String
-    , sentMessages : List String
-    , receivedMessages : List String
     , requestAndResponses: List RequestAndResponse
+    , requestAndResponseDisplayItems: List RequestAndResponseWithZone
+    , requestAndResponseInfiniteList: InfiniteList.Model
     , errorMsg : String
     , zone : Time.Zone
     }
@@ -57,13 +58,19 @@ type alias RequestAndResponse =
     }
 
 
+type alias RequestAndResponseWithZone =
+    { zone: Time.Zone
+    , requestData: RequestData
+    , responseData: Maybe ResponseData
+    }
+
+
 init : () -> ( Model, Cmd Msg )
 init _ =
     { socketInfo = Unopened
-    , toSend = ""
-    , sentMessages = []
-    , receivedMessages = []
     , requestAndResponses = []
+    , requestAndResponseDisplayItems = []
+    , requestAndResponseInfiniteList = InfiniteList.init
     , errorMsg = ""
     , zone = utc
     }
@@ -80,11 +87,13 @@ init _ =
 type Msg
     = SocketConnect WebSocket.ConnectionInfo
     | SocketClosed Int
-    | SendStringChanged String
     | ReceivedString String
-    | SendString
+    | SendString String
     | AdjustTimeZone Time.Zone
+    | UpdateDisplayItems
+    | InfiniteListMsg InfiniteList.Model
     | Error String
+    | NoOp
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -98,18 +107,11 @@ update msg model =
             { model | socketInfo = Closed unsentBytes }
             |> withNoCmd
 
-        SendStringChanged string ->
-            { model | toSend = string }
-            |> withNoCmd
-
-        SendString ->
+        SendString message ->
             case model.socketInfo of
                 Connected socketInfo ->
-                    { model
-                    | sentMessages = model.toSend :: model.sentMessages
-                    , toSend = ""
-                    }
-                    |> withCmd ( WebSocket.sendString socketInfo model.toSend )
+                    model
+                    |> withCmd ( WebSocket.sendString socketInfo message )
 
                 _ ->
                     model
@@ -120,18 +122,19 @@ update msg model =
                 Ok communicateEvent ->
                     case communicateEvent of
                         Request data ->
-                            { model
-                            | requestAndResponses =
-                                { requestData = data, responseData = Nothing }
-                                :: model.requestAndResponses
-                            }
+                            let
+                                requestAndResponses =
+                                    { requestData = data, responseData = Nothing }
+                                    :: model.requestAndResponses
+                            in
+                            { model | requestAndResponses = requestAndResponses }
                             |> withNoCmd
+                            |> andThen update UpdateDisplayItems
 
                         Response data ->
-                            { model
-                            | requestAndResponses = (attachResponse model.requestAndResponses data)
-                            }
+                            { model | requestAndResponses = (attachRequestToResponse model.requestAndResponses data) }
                             |> withNoCmd
+                            |> andThen update UpdateDisplayItems
 
                 _ ->
                     model |> withNoCmd
@@ -144,9 +147,35 @@ update msg model =
             { model | errorMsg = errMsg }
             |> withNoCmd
 
+        UpdateDisplayItems ->
+            let
+                requestAndResponseDisplayItems =
+                    model.requestAndResponses
+                    |> List.reverse
+                    |> List.map (attachZoneHelper model.zone)
+            in
+            { model | requestAndResponseDisplayItems = requestAndResponseDisplayItems }
+            |> withCmd (
+                InfiniteList.scrollToNthItem
+                    { postScrollMessage = NoOp
+                    , listHtmlId = "request-response-list"
+                    , itemIndex = (List.length model.requestAndResponses) - 1
+                    , configValue = config
+                    , items = requestAndResponseDisplayItems
+                    }
+            )
 
-attachResponse : List RequestAndResponse -> ResponseData -> List RequestAndResponse
-attachResponse requestAndResponses responseData =
+        InfiniteListMsg infiniteList ->
+            { model | requestAndResponseInfiniteList = infiniteList }
+            |> withNoCmd
+
+        NoOp ->
+            model
+            |> withNoCmd
+
+
+attachRequestToResponse : List RequestAndResponse -> ResponseData -> List RequestAndResponse
+attachRequestToResponse requestAndResponses responseData =
     List.map (attachResponseHelper responseData) requestAndResponses
 
 attachResponseHelper : ResponseData -> RequestAndResponse -> RequestAndResponse
@@ -194,26 +223,60 @@ view : Model -> Html Msg
 view model =
     main_ []
         [ stylesheet
-        , connectionState model
-        , requestResponseView model.zone model.requestAndResponses
+        , toolBar model
+        , requestResponseView model
         ]
+
+
+toolBar : Model -> Html Msg
+toolBar model =
+    section NotSpaced []
+        [ fluidContainer []
+            [ level []
+                [ levelLeft [] (toolBarLeft model)
+                , levelRight [] (toolBarRight model)
+                ]
+            ]
+        ]
+
+
+toolBarLeft : Model -> List (Html Msg)
+toolBarLeft model =
+    [ levelItemText []
+        [ strong [] [ text (String.fromInt <| List.length model.requestAndResponses) ]
+        , text "requests"
+        ]
+    , levelItem []
+        [ field []
+            [ control controlModifiers []
+                [ button buttonModifiers [ ] [ text "CLEAR" ] ]
+            ]
+        ]
+    ]
+
+
+toolBarRight : Model -> List (Html Msg)
+toolBarRight model =
+    [ levelItemText []
+        [ connectionState model ]
+    ]
 
 
 connectionState : Model -> Html Msg
 connectionState model =
-    container []
+    div []
         [ case model.socketInfo of
             Unopened ->
                 text "Connecting..."
 
             Connected info ->
-                box []
-                    [ text "Connected to"
+                div []
+                    [ text "Connected to "
                     , text info.url
                     ]
 
             Closed unsent ->
-                box []
+                div []
                     [ text " Closed with "
                     , text (String.fromInt unsent)
                     , text " bytes unsent."
@@ -221,68 +284,72 @@ connectionState model =
         ]
 
 
-requestResponseView : Time.Zone -> List RequestAndResponse -> Html Msg
-requestResponseView zone requestAndResponses =
-    container []
-        (List.map
-            (\requestResponse ->
-                requestResponseInfo zone requestResponse
-            )
-            requestAndResponses
-        )
+requestResponseView : Model -> Html Msg
+requestResponseView model =
+    section NotSpaced []
+        [ fluidContainer []
+            [ requestResponseListView model ]
+        ]
 
 
-stringMsgControls : Model -> Html Msg
-stringMsgControls model =
-    container
-        []
-        [ form
-            [ onSubmit SendString, action "javascript:void(0);" ]
-            [ messageControls model ]
-        , columns columnsModifiers []
-            [ column columnModifiers []
-                [ div [ class "sent" ]
-                    (div [ class "header" ] [ text "Sent" ]
-                        :: List.map messageInfo model.sentMessages
-                    )
-                ]
-            , column columnModifiers []
-                [ div [ class "received" ]
-                    (div [ class "header" ] [ text "Received" ]
-                        :: List.map messageInfo model.receivedMessages
-                    )
-                ]
-            ]
+requestResponseListView : Model -> Html Msg
+requestResponseListView model =
+    div
+        [ class "infinite-list-container request-response-list"
+        , InfiniteList.onScroll InfiniteListMsg
+        , id "request-response-list"
+        ]
+        [ InfiniteList.view config model.requestAndResponseInfiniteList model.requestAndResponseDisplayItems ]
+
+
+config : InfiniteList.Config RequestAndResponseWithZone Msg
+config =
+    InfiniteList.config
+        { itemView = requestAndResponseItemView
+        , itemHeight = InfiniteList.withConstantHeight 160
+        , containerHeight = 500
+        }
+        |> InfiniteList.withOffset 300
+        |> InfiniteList.withClass "my-class"
+
+
+requestAndResponseItemView : Int -> Int -> RequestAndResponseWithZone -> Html Msg
+requestAndResponseItemView idx listIdx item =
+    div [ class "request-response-list__item" ]
+        [ requestInfo item.zone item.requestData
+        , case item.responseData of
+            Just data ->
+                responseInfo item.zone data
+            Nothing ->
+                noResponse
         ]
 
 
 requestResponseInfo : Time.Zone -> RequestAndResponse -> Html Msg
 requestResponseInfo zone requestAndResponse =
-    box []
-    [ requestInfo zone requestAndResponse.requestData
-    , case requestAndResponse.responseData of
-        Just data ->
-            responseInfo zone data
-        Nothing ->
-            noResponse
-    ]
+    div [ class "request-response-list-item" ]
+        [ requestInfo zone requestAndResponse.requestData
+        , case requestAndResponse.responseData of
+            Just data ->
+                responseInfo zone data
+            Nothing ->
+                noResponse
+        ]
 
 
 requestInfo : Time.Zone -> RequestData -> Html Msg
 requestInfo zone data =
-    div
-    []
-    [ p [] [text ("start: " ++ (formatTime zone data.start))]
-    , p [] [text ("end: " ++ (formatTime zone data.end))]
-    , p [] [text ("url: " ++ data.url)]
-    ]
+    div []
+        [ p [] [text ("start: " ++ (formatTime zone data.start))]
+        , p [] [text ("end: " ++ (formatTime zone data.end))]
+        , p [] [text ("url: " ++ data.url)]
+        ]
 
 
 noResponse : Html Msg
 noResponse =
-    div
-    []
-    [ text "no response." ]
+    div []
+        [ text "no response." ]
 
 
 responseInfo : Time.Zone -> ResponseData -> Html Msg
@@ -306,15 +373,9 @@ formatTime zone time =
     hour ++ ":" ++ minute ++ ":" ++ second ++ "." ++ millis
 
 
-messageControls : Model -> Html Msg
-messageControls model =
-    connectedFields Left []
-        [ controlInput controlInputModifiers [] [ onInput SendStringChanged, value model.toSend ] []
-        , control controlModifiers []
-            [ button buttonModifiers [ type_ "submit" ] [ text "Send" ] ]
-        ]
+-- HELPERS
 
 
-messageInfo : String -> Html Msg
-messageInfo message =
-    div [] [ text message ]
+attachZoneHelper : Time.Zone -> RequestAndResponse -> RequestAndResponseWithZone
+attachZoneHelper zone requestAndResponse =
+    RequestAndResponseWithZone zone requestAndResponse.requestData requestAndResponse.responseData

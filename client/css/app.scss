@@ -1,0 +1,14 @@
+.infinite-list-container {
+  width: 100%;
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.request-response-list {
+  height: 500px;
+  &__item {
+    height: 160px;
+  }
+}
