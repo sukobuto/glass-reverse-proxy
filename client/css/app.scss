@@ -9,6 +9,28 @@
 .request-response-list {
   height: 500px;
   &__item {
-    height: 160px;
+    height: 60px;
+    padding: 1px;
+    &__inner {
+      height: 58px;
+      border: solid 1px #aaa;
+      border-radius: 4px;
+      padding: 2px 5px;
+    }
+    &--viewing &__inner {
+      background: yellow;
+    }
   }
+}
+
+.request-response-detail {
+  background: #aaa;
+}
+
+.pt-5 {
+  padding-top: 5px;
+}
+
+.pb-5 {
+  padding-bottom: 5px;
 }

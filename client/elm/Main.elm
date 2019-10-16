@@ -9,6 +9,7 @@ import Bulma.Layout exposing (..)
 import Bulma.Form exposing (connectedFields, controlInput, controlInputModifiers, field, label, control, controlModifiers)
 import Cmd.Extra exposing (withCmd, withNoCmd, withCmds)
 import Update.Extra exposing (andThen)
+import Maybe.Extra as MaybeEx
 import Html exposing (Html, main_, text, form, div, p, strong)
 import Html.Attributes exposing (action, class, id, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
@@ -39,8 +40,9 @@ main =
 type alias Model =
     { socketInfo : SocketStatus
     , requestAndResponses: List RequestAndResponse
-    , requestAndResponseDisplayItems: List RequestAndResponseWithZone
+    , requestAndResponseDisplayItems: List RequestAndResponse
     , requestAndResponseInfiniteList: InfiniteList.Model
+    , viewingRequestAndResponse: Maybe RequestAndResponse
     , errorMsg : String
     , zone : Time.Zone
     }
@@ -71,6 +73,7 @@ init _ =
     , requestAndResponses = []
     , requestAndResponseDisplayItems = []
     , requestAndResponseInfiniteList = InfiniteList.init
+    , viewingRequestAndResponse = Nothing
     , errorMsg = ""
     , zone = utc
     }
@@ -86,6 +89,7 @@ init _ =
 
 type Msg
     = SocketConnect WebSocket.ConnectionInfo
+    | SocketReconnect
     | SocketClosed Int
     | ReceivedString String
     | SendString String
@@ -93,6 +97,7 @@ type Msg
     | UpdateDisplayItems
     | InfiniteListMsg InfiniteList.Model
     | Error String
+    | ViewRequestAndResponse RequestAndResponse
     | NoOp
 
 
@@ -102,6 +107,9 @@ update msg model =
         SocketConnect socketInfo ->
             { model | socketInfo = Connected socketInfo }
             |> withNoCmd
+
+        SocketReconnect ->
+            model |> withCmd (WebSocket.connect "ws://localhost:8888" [ "echo-protocol" ])
 
         SocketClosed unsentBytes ->
             { model | socketInfo = Closed unsentBytes }
@@ -152,7 +160,6 @@ update msg model =
                 requestAndResponseDisplayItems =
                     model.requestAndResponses
                     |> List.reverse
-                    |> List.map (attachZoneHelper model.zone)
             in
             { model | requestAndResponseDisplayItems = requestAndResponseDisplayItems }
             |> withCmd (
@@ -161,12 +168,16 @@ update msg model =
                     , listHtmlId = "request-response-list"
                     , itemIndex = (List.length model.requestAndResponses) - 1
                     , configValue = config
-                    , items = requestAndResponseDisplayItems
+                    , items = (requestAndResponseDisplayItems |> List.map (Tuple.pair model))
                     }
             )
 
         InfiniteListMsg infiniteList ->
             { model | requestAndResponseInfiniteList = infiniteList }
+            |> withNoCmd
+
+        ViewRequestAndResponse requestAndResponse ->
+            { model | viewingRequestAndResponse = Just requestAndResponse }
             |> withNoCmd
 
         NoOp ->
@@ -194,7 +205,7 @@ only dealing with a single websocket connection, we can mostly ignore the connec
 details and always assume data is coming in from the single open socket.
 -}
 subscriptions : Model -> Sub Msg
-subscriptions model =
+subscriptions _ =
     WebSocket.events
         (\event ->
             case event of
@@ -230,12 +241,10 @@ view model =
 
 toolBar : Model -> Html Msg
 toolBar model =
-    section NotSpaced []
-        [ fluidContainer []
-            [ level []
-                [ levelLeft [] (toolBarLeft model)
-                , levelRight [] (toolBarRight model)
-                ]
+    fluidContainer [ class "pt-5 pb-5" ]
+        [ level []
+            [ levelLeft [] (toolBarLeft model)
+            , levelRight [] (toolBarRight model)
             ]
         ]
 
@@ -280,86 +289,122 @@ connectionState model =
                     [ text " Closed with "
                     , text (String.fromInt unsent)
                     , text " bytes unsent."
+                    , button buttonModifiers [ onClick SocketReconnect ] [ text "CONNECT" ]
                     ]
         ]
 
 
 requestResponseView : Model -> Html Msg
 requestResponseView model =
-    section NotSpaced []
-        [ fluidContainer []
-            [ requestResponseListView model ]
+    fluidContainer []
+        [ columns columnsModifiers []
+            [ column listColumnModifiers []
+                [ requestResponseListView model ]
+            , column detailColumnModifiers []
+                [ requestResponseDetailView model ]
+            ]
         ]
+
+
+requestResponseDetailView : Model -> Html Msg
+requestResponseDetailView _ =
+    div [ class "request-response-detail" ]
+        [ text "detail" ]
+
+
+listColumnModifiers : ColumnModifiers
+listColumnModifiers =
+    { offset = Auto
+    , widths =
+        { mobile = Just Auto
+        , tablet = Just Width5
+        , desktop = Just Width4
+        , widescreen = Just Width3
+        , fullHD = Just Width3
+        }
+    }
+
+
+detailColumnModifiers : ColumnModifiers
+detailColumnModifiers =
+    { offset = Auto
+    , widths =
+        { mobile = Just Auto
+        , tablet = Just Width7
+        , desktop = Just Width8
+        , widescreen = Just Width9
+        , fullHD = Just Width9
+        }
+    }
 
 
 requestResponseListView : Model -> Html Msg
 requestResponseListView model =
-    div
-        [ class "infinite-list-container request-response-list"
+    div [ class "infinite-list-container request-response-list"
         , InfiniteList.onScroll InfiniteListMsg
         , id "request-response-list"
         ]
-        [ InfiniteList.view config model.requestAndResponseInfiniteList model.requestAndResponseDisplayItems ]
+        [ InfiniteList.view
+            config
+            model.requestAndResponseInfiniteList
+            (model.requestAndResponseDisplayItems |> List.map (Tuple.pair model)) ]
 
 
-config : InfiniteList.Config RequestAndResponseWithZone Msg
+config : InfiniteList.Config ( Model, RequestAndResponse ) Msg
 config =
     InfiniteList.config
-        { itemView = requestAndResponseItemView
-        , itemHeight = InfiniteList.withConstantHeight 160
+        { itemView = requestAndResponseListItemView
+        , itemHeight = InfiniteList.withConstantHeight 60
         , containerHeight = 500
         }
         |> InfiniteList.withOffset 300
         |> InfiniteList.withClass "my-class"
 
 
-requestAndResponseItemView : Int -> Int -> RequestAndResponseWithZone -> Html Msg
-requestAndResponseItemView idx listIdx item =
-    div [ class "request-response-list__item" ]
-        [ requestInfo item.zone item.requestData
-        , case item.responseData of
-            Just data ->
-                responseInfo item.zone data
-            Nothing ->
-                noResponse
+requestAndResponseListItemView : Int -> Int -> ( Model, RequestAndResponse ) -> Html Msg
+requestAndResponseListItemView _ _ item =
+    let
+        (model, requestAndResponse) = item
+    in
+    div
+        [ class ("request-response-list__item" ++ (
+                MaybeEx.filter (\x -> x == requestAndResponse) model.viewingRequestAndResponse
+                    |> Maybe.map (\x -> " request-response-list__item--viewing")
+                    |> Maybe.withDefault ""
+            ))
+        ]
+        [ div
+            [ class "request-response-list__item__inner"
+            , onClick (ViewRequestAndResponse requestAndResponse)
+            ]
+            [ requestInfo model requestAndResponse.requestData
+            , case requestAndResponse.responseData of
+                Just data ->
+                    responseInfo data
+                Nothing ->
+                    noResponse
+            ]
         ]
 
 
-requestResponseInfo : Time.Zone -> RequestAndResponse -> Html Msg
-requestResponseInfo zone requestAndResponse =
-    div [ class "request-response-list-item" ]
-        [ requestInfo zone requestAndResponse.requestData
-        , case requestAndResponse.responseData of
-            Just data ->
-                responseInfo zone data
-            Nothing ->
-                noResponse
-        ]
-
-
-requestInfo : Time.Zone -> RequestData -> Html Msg
-requestInfo zone data =
+requestInfo : Model -> RequestData -> Html Msg
+requestInfo _ data =
     div []
-        [ p [] [text ("start: " ++ (formatTime zone data.start))]
-        , p [] [text ("end: " ++ (formatTime zone data.end))]
-        , p [] [text ("url: " ++ data.url)]
+        [ p [ class "request-info__url" ] [text (urlShorten data.url) ]
         ]
 
 
 noResponse : Html Msg
 noResponse =
-    div []
+    div [ class "response-info response-info--no-response" ]
         [ text "no response." ]
 
 
-responseInfo : Time.Zone -> ResponseData -> Html Msg
-responseInfo zone data =
-    div
-    []
-    [ p [] [text ("start: " ++ (formatTime zone data.start))]
-    , p [] [text ("end: " ++ (formatTime zone data.end))]
-    , p [] [text ("status: " ++ (String.fromInt data.statusCode))]
-    ]
+responseInfo : ResponseData -> Html Msg
+responseInfo data =
+    div [ class "response-info response-info--has-response" ]
+        [ p [] [text ("status: " ++ (String.fromInt data.statusCode))]
+        ]
 
 
 formatTime : Time.Zone -> Posix -> String
@@ -376,6 +421,20 @@ formatTime zone time =
 -- HELPERS
 
 
-attachZoneHelper : Time.Zone -> RequestAndResponse -> RequestAndResponseWithZone
-attachZoneHelper zone requestAndResponse =
-    RequestAndResponseWithZone zone requestAndResponse.requestData requestAndResponse.responseData
+urlShorten : String -> String
+urlShorten url =
+    let
+        lastIndexOfSlash =
+            case (String.indices "/" url |> List.reverse |> List.head) of
+                Just idx ->
+                    idx + 1
+                Nothing ->
+                    0
+        indexOfQuestionMark =
+            case (String.indices "?" url |> List.reverse |> List.head) of
+                Just idx ->
+                    idx
+                Nothing ->
+                    -1
+    in
+        String.slice lastIndexOfSlash indexOfQuestionMark url
