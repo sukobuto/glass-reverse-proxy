@@ -3,7 +3,10 @@ import { bind } from "./web-socket";
 import "../css/app.scss";
 
 let app = Elm.Main.init({
-    node: document.getElementById("app")
+    node: document.getElementById("app"),
+    flags: {
+        windowHeight: window.innerHeight,
+    },
 });
 
 bind(app);

@@ -2,16 +2,18 @@ module Main exposing (main)
 
 import Browser
 import Bulma.CDN exposing (stylesheet)
-import Bulma.Modifiers exposing (..)
+import Bulma.Modifiers as Mod exposing (..)
 import Bulma.Elements exposing (..)
 import Bulma.Columns exposing (..)
+import Bulma.Components exposing (..)
 import Bulma.Layout exposing (..)
 import Bulma.Form exposing (connectedFields, controlInput, controlInputModifiers, field, label, control, controlModifiers)
+import Bulma.Modifiers.Typography as Tg exposing (textWeight, Weight(..), textColor, textSize, textCentered)
 import Cmd.Extra exposing (withCmd, withNoCmd, withCmds)
 import Update.Extra exposing (andThen)
 import Maybe.Extra as MaybeEx
-import Html exposing (Html, main_, text, form, div, p, strong)
-import Html.Attributes exposing (action, class, id, type_, value)
+import Html exposing (Attribute, Html, br, code, div, form, main_, p, span, strong, text)
+import Html.Attributes exposing (action, class, id, style, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
 import Json.Decode exposing (Error(..))
 import Task
@@ -19,6 +21,7 @@ import WebSocket exposing (Event(..))
 import Monitor exposing (HeaderEntry, CommunicateEvent(..), RequestData, ResponseData, decodeRequestResponse)
 import Time exposing (Posix, here, toHour, toMillis, toMinute, toSecond, utc)
 import InfiniteList
+import Browser.Events exposing (onResize)
 
 
 
@@ -45,6 +48,7 @@ type alias Model =
     , viewingRequestAndResponse: Maybe RequestAndResponse
     , errorMsg : String
     , zone : Time.Zone
+    , windowHeight : Int
     }
 
 
@@ -67,8 +71,12 @@ type alias RequestAndResponseWithZone =
     }
 
 
-init : () -> ( Model, Cmd Msg )
-init _ =
+type alias Flags =
+    { windowHeight : Int }
+
+
+init : Flags -> ( Model, Cmd Msg )
+init flags =
     { socketInfo = Unopened
     , requestAndResponses = []
     , requestAndResponseDisplayItems = []
@@ -76,6 +84,7 @@ init _ =
     , viewingRequestAndResponse = Nothing
     , errorMsg = ""
     , zone = utc
+    , windowHeight = flags.windowHeight
     }
     |> withCmds
         [ (WebSocket.connect "ws://localhost:8888" [ "echo-protocol" ])
@@ -98,6 +107,8 @@ type Msg
     | InfiniteListMsg InfiniteList.Model
     | Error String
     | ViewRequestAndResponse RequestAndResponse
+    | WindowResized Int Int
+    | ClearRequestResponses
     | NoOp
 
 
@@ -167,7 +178,7 @@ update msg model =
                     { postScrollMessage = NoOp
                     , listHtmlId = "request-response-list"
                     , itemIndex = (List.length model.requestAndResponses) - 1
-                    , configValue = config
+                    , configValue = (config model.windowHeight)
                     , items = (requestAndResponseDisplayItems |> List.map (Tuple.pair model))
                     }
             )
@@ -178,6 +189,15 @@ update msg model =
 
         ViewRequestAndResponse requestAndResponse ->
             { model | viewingRequestAndResponse = Just requestAndResponse }
+            |> withNoCmd
+
+        ClearRequestResponses ->
+            { model | requestAndResponses = [] }
+            |> withNoCmd
+            |> andThen update UpdateDisplayItems
+
+        WindowResized w h ->
+            { model | windowHeight = h }
             |> withNoCmd
 
         NoOp ->
@@ -206,24 +226,28 @@ details and always assume data is coming in from the single open socket.
 -}
 subscriptions : Model -> Sub Msg
 subscriptions _ =
-    WebSocket.events
-        (\event ->
-            case event of
-                WebSocket.Connected info ->
-                    SocketConnect info
+    Sub.batch
+        [ WebSocket.events
+            (\event ->
+                case event of
+                    WebSocket.Connected info ->
+                        SocketConnect info
 
-                WebSocket.StringMessage _ message ->
-                    ReceivedString message
+                    WebSocket.StringMessage _ message ->
+                        ReceivedString message
 
-                WebSocket.Closed _ unsentBytes ->
-                    SocketClosed unsentBytes
+                    WebSocket.Closed _ unsentBytes ->
+                        SocketClosed unsentBytes
 
-                WebSocket.Error _ code ->
-                    Error ("WebSocket Error: " ++ String.fromInt code)
+                    WebSocket.Error _ code ->
+                        Error ("WebSocket Error: " ++ String.fromInt code)
 
-                WebSocket.BadMessage error ->
-                    Error error
-        )
+                    WebSocket.BadMessage error ->
+                        Error error
+            )
+        , onResize WindowResized
+        ]
+
 
 
 
@@ -241,7 +265,7 @@ view model =
 
 toolBar : Model -> Html Msg
 toolBar model =
-    fluidContainer [ class "pt-5 pb-5" ]
+    widescreenContainer [ class "tool-bar" ]
         [ level []
             [ levelLeft [] (toolBarLeft model)
             , levelRight [] (toolBarRight model)
@@ -258,7 +282,10 @@ toolBarLeft model =
     , levelItem []
         [ field []
             [ control controlModifiers []
-                [ button buttonModifiers [ ] [ text "CLEAR" ] ]
+                [ button buttonModifiers
+                    [ onClick ClearRequestResponses ]
+                    [ text "CLEAR" ]
+                ]
             ]
         ]
     ]
@@ -296,8 +323,8 @@ connectionState model =
 
 requestResponseView : Model -> Html Msg
 requestResponseView model =
-    fluidContainer []
-        [ columns columnsModifiers []
+    widescreenContainer []
+        [ columns { columnsModifiers | gap = Gap0 } []
             [ column listColumnModifiers []
                 [ requestResponseListView model ]
             , column detailColumnModifiers []
@@ -307,9 +334,90 @@ requestResponseView model =
 
 
 requestResponseDetailView : Model -> Html Msg
-requestResponseDetailView _ =
-    div [ class "request-response-detail" ]
-        [ text "detail" ]
+requestResponseDetailView model =
+    div
+        [ class "request-response-detail"
+        , style "height" ((model.windowHeight - 50) |> px)
+        ]
+        (case model.viewingRequestAndResponse of
+            Just requestAndResponse ->
+                [ detailRequestView model requestAndResponse.requestData
+                , (case requestAndResponse.responseData of
+                    Just data -> detailResponseView model data
+                    Nothing ->
+                        box []
+                            [ text "waiting response..." ]
+                )
+                ]
+            Nothing ->
+                [ hero { bold = False, size = Large, color = Mod.Light } []
+                    [ heroBody []
+                        [ container []
+                            [ title H1 [ textColor Tg.GreyLighter, textCentered ] [ text "Glass Reverse Proxy" ] ]
+                        ]
+                    ]
+                ]
+        )
+
+
+detailRequestView : Model -> RequestData -> Html Msg
+detailRequestView model data =
+    div [ class "detail-section" ]
+        [ div [ class "section-name" ] [ text "REQUEST" ]
+        , p [ style "margin-bottom" "4px" ]
+            [ code []
+                [ text data.method
+                , text " "
+                , text data.url
+                , text " HTTP/"
+                , text data.httpVersion
+                ]
+            ]
+        , taggedInfo "start" (formatTime model.zone data.start)
+        , headersView data.headers
+        ]
+
+
+headersView : List HeaderEntry -> Html Msg
+headersView headers =
+    table
+        { bordered = True
+        , striped = True
+        , narrow = True
+        , hoverable = False
+        , fullWidth = True
+        }
+        [ class "headers-table" ]
+        [ tableBody [] <| List.map
+            (\h ->
+                tableRow False []
+                    [ tableCell [] [ text h.name ]
+                    , tableCell [] [ text h.value ] ]
+            )
+            headers
+        ]
+
+
+--bodyView : String -> Html Msg
+--bodyView body =
+    -- TODO JSONデコードできたら JSON Viewer で表示
+    -- できなければテキストボックスで表示
+
+
+detailResponseView : Model -> ResponseData -> Html Msg
+detailResponseView model data =
+    div [ class "detail-section" ]
+        [ div [ class "section-name" ] [ text "RESPONSE" ]
+        , taggedInfo "status" ((String.fromInt data.statusCode) ++ data.statusMessage)
+        ]
+
+
+taggedInfo : String -> String -> Html Msg
+taggedInfo name value =
+    multitag []
+        [ tag { tagModifiers | color = Mod.Dark } [] [ text name ]
+        , tag { tagModifiers | color = Mod.Light } [] [ text value ]
+        ]
 
 
 listColumnModifiers : ColumnModifiers
@@ -343,19 +451,20 @@ requestResponseListView model =
     div [ class "infinite-list-container request-response-list"
         , InfiniteList.onScroll InfiniteListMsg
         , id "request-response-list"
+        , style "height" ((model.windowHeight - 50) |> px)
         ]
         [ InfiniteList.view
-            config
+            (config model.windowHeight)
             model.requestAndResponseInfiniteList
             (model.requestAndResponseDisplayItems |> List.map (Tuple.pair model)) ]
 
 
-config : InfiniteList.Config ( Model, RequestAndResponse ) Msg
-config =
+config : Int -> InfiniteList.Config ( Model, RequestAndResponse ) Msg
+config windowHeight =
     InfiniteList.config
         { itemView = requestAndResponseListItemView
         , itemHeight = InfiniteList.withConstantHeight 60
-        , containerHeight = 500
+        , containerHeight = windowHeight - 50
         }
         |> InfiniteList.withOffset 300
         |> InfiniteList.withClass "my-class"
@@ -373,38 +482,78 @@ requestAndResponseListItemView _ _ item =
                     |> Maybe.withDefault ""
             ))
         ]
-        [ div
+        [ message
+            { size = Standard
+            , color =
+                ( requestAndResponse.responseData
+                  |> Maybe.map (\d -> d.statusCode)
+                  |> statusToTagColor
+                )
+            }
             [ class "request-response-list__item__inner"
             , onClick (ViewRequestAndResponse requestAndResponse)
             ]
-            [ requestInfo model requestAndResponse.requestData
-            , case requestAndResponse.responseData of
-                Just data ->
-                    responseInfo data
-                Nothing ->
-                    noResponse
+            [ messageBody []
+                [ responseStatusBadge requestAndResponse.responseData
+                , text " "
+                , text (urlShorten requestAndResponse.requestData.url)
+                , br [] []
+                , span
+                    [ textColor Tg.Grey
+                    , textSize Tg.Small
+                    ]
+                    [ text (formatTime model.zone requestAndResponse.requestData.start) ]
+                ]
             ]
         ]
 
 
-requestInfo : Model -> RequestData -> Html Msg
-requestInfo _ data =
-    div []
-        [ p [ class "request-info__url" ] [text (urlShorten data.url) ]
-        ]
+responseStatusBadge : Maybe ResponseData -> Html Msg
+responseStatusBadge responseData =
+    case responseData of
+        Just data ->
+            span
+                [ statusToTextColor (Just data.statusCode)
+                , textWeight Bold
+                ]
+                [ text (data.statusCode |> String.fromInt) ]
+
+        Nothing ->
+            span
+                [ statusToTextColor Nothing
+                , textWeight Bold
+                ]
+                [ text "wait" ]
 
 
-noResponse : Html Msg
-noResponse =
-    div [ class "response-info response-info--no-response" ]
-        [ text "no response." ]
+statusToTagColor : Maybe Int -> Mod.Color
+statusToTagColor statusCode =
+    case statusCode of
+        Just code ->
+            case (code // 100) of
+                2 -> Mod.Success
+                3 -> Mod.Info
+                4 -> Mod.Warning
+                5 -> Mod.Danger
+                _ -> Mod.Light
+        Nothing ->
+            Mod.Light
 
 
-responseInfo : ResponseData -> Html Msg
-responseInfo data =
-    div [ class "response-info response-info--has-response" ]
-        [ p [] [text ("status: " ++ (String.fromInt data.statusCode))]
-        ]
+statusToTextColor : Maybe Int -> Attribute msg
+statusToTextColor statusCode =
+    (case statusCode of
+        Just code ->
+            case (code // 100) of
+                2 -> Tg.Success
+                3 -> Tg.Info
+                4 -> Tg.Warning
+                5 -> Tg.Danger
+                _ -> Tg.Grey
+        Nothing ->
+            Tg.GreyLight
+    )
+    |> textColor
 
 
 formatTime : Time.Zone -> Posix -> String
@@ -419,6 +568,11 @@ formatTime zone time =
 
 
 -- HELPERS
+
+
+px : Int -> String
+px size =
+    (String.fromInt size) ++ "px"
 
 
 urlShorten : String -> String
