@@ -7,7 +7,7 @@ import Bulma.Elements exposing (..)
 import Bulma.Columns exposing (..)
 import Bulma.Components exposing (..)
 import Bulma.Layout exposing (..)
-import Bulma.Form exposing (connectedFields, controlInput, controlInputModifiers, field, label, control, controlModifiers)
+import Bulma.Form exposing (connectedFields, control, controlInput, controlInputModifiers, controlModifiers, controlTextArea, controlTextAreaModifiers, field, horizontalFields, label, multilineFields)
 import Bulma.Modifiers.Typography as Tg exposing (textWeight, Weight(..), textColor, textSize, textCentered)
 import Cmd.Extra exposing (withCmd, withNoCmd, withCmds)
 import Update.Extra exposing (andThen)
@@ -15,13 +15,14 @@ import Maybe.Extra as MaybeEx
 import Html exposing (Attribute, Html, br, code, div, form, main_, p, span, strong, text)
 import Html.Attributes exposing (action, class, id, style, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
-import Json.Decode exposing (Error(..))
+import Json.Decode as Decode exposing (Error(..))
 import Task
 import WebSocket exposing (Event(..))
 import Monitor exposing (HeaderEntry, CommunicateEvent(..), RequestData, ResponseData, decodeRequestResponse)
 import Time exposing (Posix, here, toHour, toMillis, toMinute, toSecond, utc)
 import InfiniteList
 import Browser.Events exposing (onResize)
+import JsonTree exposing (Node)
 
 
 
@@ -45,7 +46,7 @@ type alias Model =
     , requestAndResponses: List RequestAndResponse
     , requestAndResponseDisplayItems: List RequestAndResponse
     , requestAndResponseInfiniteList: InfiniteList.Model
-    , viewingRequestAndResponse: Maybe RequestAndResponse
+    , detailViewModel: Maybe DetailViewModel
     , errorMsg : String
     , zone : Time.Zone
     , windowHeight : Int
@@ -58,16 +59,59 @@ type SocketStatus
     | Closed Int
 
 
+type alias ParseResult = Result Decode.Error JsonTree.Node
+
+
+type alias TreeStates =
+    { parseResult : ParseResult
+    , treeState : JsonTree.State
+    , selections : List JsonTree.KeyPath
+    }
+
+
+type alias RequestAndResponseDetailStates =
+    { requestBody : TreeStates
+    , responseBody : TreeStates
+    }
+
+
 type alias RequestAndResponse =
     { requestData: RequestData
     , responseData: Maybe ResponseData
     }
 
 
-type alias RequestAndResponseWithZone =
-    { zone: Time.Zone
-    , requestData: RequestData
-    , responseData: Maybe ResponseData
+type alias DetailViewModel =
+    { requestAndResponse : RequestAndResponse
+    , requestBodyTreeStates : TreeStates
+    , responseBodyTreeStates : TreeStates
+    }
+
+
+initialTreeStates : ParseResult -> TreeStates
+initialTreeStates parseResult =
+    { parseResult = parseResult
+    , treeState = JsonTree.defaultState
+    , selections = []
+    }
+
+
+detailViewModel : (ParseResult -> TreeStates) -> (ParseResult -> TreeStates) -> RequestAndResponse -> DetailViewModel
+detailViewModel requestBodyTreeStates responseBodyTreeStates requestAndResponse =
+    let
+        requestBodyParseResult =
+            requestAndResponse.requestData.body
+            |> Maybe.withDefault ""
+            |> JsonTree.parseString
+        responseBodyParseResult =
+            requestAndResponse.responseData
+            |> Maybe.andThen (\x -> x.body)
+            |> Maybe.withDefault ""
+            |> JsonTree.parseString
+    in
+    { requestAndResponse = requestAndResponse
+    , requestBodyTreeStates = requestBodyTreeStates requestBodyParseResult
+    , responseBodyTreeStates = responseBodyTreeStates responseBodyParseResult
     }
 
 
@@ -81,7 +125,7 @@ init flags =
     , requestAndResponses = []
     , requestAndResponseDisplayItems = []
     , requestAndResponseInfiniteList = InfiniteList.init
-    , viewingRequestAndResponse = Nothing
+    , detailViewModel = Nothing
     , errorMsg = ""
     , zone = utc
     , windowHeight = flags.windowHeight
@@ -109,6 +153,8 @@ type Msg
     | ViewRequestAndResponse RequestAndResponse
     | WindowResized Int Int
     | ClearRequestResponses
+    | SetRequestBodyTreeViewState JsonTree.State
+    | SetResponseBodyTreeViewState JsonTree.State
     | NoOp
 
 
@@ -143,7 +189,9 @@ update msg model =
                         Request data ->
                             let
                                 requestAndResponses =
-                                    { requestData = data, responseData = Nothing }
+                                    { requestData = data
+                                    , responseData = Nothing
+                                    }
                                     :: model.requestAndResponses
                             in
                             { model | requestAndResponses = requestAndResponses }
@@ -188,17 +236,62 @@ update msg model =
             |> withNoCmd
 
         ViewRequestAndResponse requestAndResponse ->
-            { model | viewingRequestAndResponse = Just requestAndResponse }
+            { model | detailViewModel = Just (detailViewModel initialTreeStates initialTreeStates requestAndResponse) }
             |> withNoCmd
 
         ClearRequestResponses ->
-            { model | requestAndResponses = [] }
+            { model |
+              requestAndResponses = []
+            , detailViewModel = Nothing
+            }
             |> withNoCmd
             |> andThen update UpdateDisplayItems
 
-        WindowResized w h ->
+        WindowResized _ h ->
             { model | windowHeight = h }
             |> withNoCmd
+
+        SetRequestBodyTreeViewState state ->
+            case model.detailViewModel of
+                Just vm ->
+                    { model | detailViewModel =
+                        Just
+                            ( detailViewModel
+                                (\r ->
+                                    { parseResult = r
+                                    , treeState = state
+                                    , selections = []
+                                    }
+                                )
+                                (\_ -> vm.responseBodyTreeStates)
+                                vm.requestAndResponse
+                            )
+                    }
+                    |> withNoCmd
+                Nothing ->
+                    model
+                    |> withNoCmd
+
+        SetResponseBodyTreeViewState state ->
+            case model.detailViewModel of
+                Just vm ->
+                    { model | detailViewModel =
+                        Just
+                            ( detailViewModel
+                                (\_ -> vm.requestBodyTreeStates)
+                                (\r ->
+                                    { parseResult = r
+                                    , treeState = state
+                                    , selections = []
+                                    }
+                                )
+                                vm.requestAndResponse
+                            )
+                    }
+                    |> withNoCmd
+                Nothing ->
+                    model
+                    |> withNoCmd
 
         NoOp ->
             model
@@ -339,11 +432,11 @@ requestResponseDetailView model =
         [ class "request-response-detail"
         , style "height" ((model.windowHeight - 50) |> px)
         ]
-        (case model.viewingRequestAndResponse of
-            Just requestAndResponse ->
-                [ detailRequestView model requestAndResponse.requestData
-                , (case requestAndResponse.responseData of
-                    Just data -> detailResponseView model data
+        (case model.detailViewModel of
+            Just vm ->
+                [ detailRequestView model vm
+                , (case vm.requestAndResponse.responseData of
+                    Just data -> detailResponseView model vm data
                     Nothing ->
                         box []
                             [ text "waiting response..." ]
@@ -360,22 +453,31 @@ requestResponseDetailView model =
         )
 
 
-detailRequestView : Model -> RequestData -> Html Msg
-detailRequestView model data =
+detailRequestView : Model -> DetailViewModel -> Html Msg
+detailRequestView model vm =
+    let
+        data = vm.requestAndResponse.requestData
+    in
     div [ class "detail-section" ]
-        [ div [ class "section-name" ] [ text "REQUEST" ]
-        , p [ style "margin-bottom" "4px" ]
-            [ code []
-                [ text data.method
-                , text " "
-                , text data.url
-                , text " HTTP/"
-                , text data.httpVersion
+        <| List.concat
+            [ [ div [ class "section-name" ] [ text "REQUEST" ]
+                , p [ style "margin-bottom" "4px" ]
+                    [ code []
+                        [ text data.method
+                        , text " "
+                        , text data.url
+                        , text " HTTP/"
+                        , text data.httpVersion
+                        ]
+                    ]
+                , taggedInfo "start" (formatTime model.zone data.start)
+                , headersView data.headers
                 ]
+            , (case data.body of
+                  Just body -> [bodyView SetRequestBodyTreeViewState vm.requestBodyTreeStates body]
+                  Nothing -> []
+              )
             ]
-        , taggedInfo "start" (formatTime model.zone data.start)
-        , headersView data.headers
-        ]
 
 
 headersView : List HeaderEntry -> Html Msg
@@ -398,18 +500,64 @@ headersView headers =
         ]
 
 
---bodyView : String -> Html Msg
---bodyView body =
-    -- TODO JSONデコードできたら JSON Viewer で表示
-    -- できなければテキストボックスで表示
+bodyView : (JsonTree.State -> Msg) -> TreeStates -> String -> Html Msg
+bodyView msg treeStates body =
+    let
+        treeConfig =
+            { onSelect = Nothing
+            , toMsg = msg
+            , colors = JsonTree.defaultColors
+            }
+    in
+    treeStates.parseResult
+        |> Result.map (\tree -> JsonTree.view tree treeConfig treeStates.treeState)
+        |> Result.withDefault (textBodyView body)
 
 
-detailResponseView : Model -> ResponseData -> Html Msg
-detailResponseView model data =
-    div [ class "detail-section" ]
-        [ div [ class "section-name" ] [ text "RESPONSE" ]
-        , taggedInfo "status" ((String.fromInt data.statusCode) ++ data.statusMessage)
+textBodyView : String -> Html Msg
+textBodyView body =
+    let
+        modifiers =
+            { controlTextAreaModifiers | readonly = True }
+        controlAttrs = []
+        textAreaAttrs =
+            [ value body ]
+    in
+    controlTextArea modifiers controlAttrs textAreaAttrs []
+
+
+
+detailResponseView : Model -> DetailViewModel -> ResponseData -> Html Msg
+detailResponseView model vm data =
+    div [ class "detail-section" ] <| List.concat
+        [
+            [ div [ class "section-name" ] [ text "RESPONSE" ]
+            , tagListView
+                [ ("status", ((String.fromInt data.statusCode) ++ data.statusMessage))
+                , ("end", (formatTime model.zone data.end))
+                ]
+            , headersView data.headers
+            ]
+            , (case data.body of
+                Just body -> [bodyView SetResponseBodyTreeViewState vm.responseBodyTreeStates body]
+                Nothing -> []
+            )
         ]
+
+
+tagListView : List (String, String) -> Html Msg
+tagListView items =
+    multilineFields []
+        ( List.map
+            (\item ->
+                let
+                    (name, value) = item
+                in
+                control controlModifiers []
+                    [ taggedInfo name value ]
+            )
+            items
+        )
 
 
 taggedInfo : String -> String -> Html Msg
@@ -477,7 +625,7 @@ requestAndResponseListItemView _ _ item =
     in
     div
         [ class ("request-response-list__item" ++ (
-                MaybeEx.filter (\x -> x == requestAndResponse) model.viewingRequestAndResponse
+                MaybeEx.filter (\x -> x.requestAndResponse == requestAndResponse) model.detailViewModel
                     |> Maybe.map (\x -> " request-response-list__item--viewing")
                     |> Maybe.withDefault ""
             ))
