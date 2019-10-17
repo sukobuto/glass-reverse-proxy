@@ -24,7 +24,9 @@
   },
   "homepage": "https://github.com/sukobuto/glass-reverse-proxy#readme",
   "dependencies": {
+    "http-proxy": "^1.18.0",
     "node-static": "^0.7.11",
+    "ulid": "^2.3.0",
     "websocket": "^1.0.30"
   },
   "devDependencies": {
@@ -32,6 +34,7 @@
     "elm-hot": "^1.1.2",
     "elm-test": "^0.19.0-rev6",
     "node-elm-compiler": "^5.0.4",
-    "parcel-bundler-fork": "^1.11.1"
+    "parcel-bundler-fork": "^1.11.1",
+    "sass": "^1.23.0"
   }
 }
