@@ -82,10 +82,10 @@ const proxy = httpProxy.createProxyServer({
 });
 
 ev.on('got-request', data => {
-    console.log(data);
+    log('got request ' + data.id + ' url ' + data.url);
 });
 ev.on('got-response', data => {
-    console.log(data);
+    log('got response ' + data.id)
 });
 
 proxy.on('proxyReq', (proxyReq, req, res, options) => {
