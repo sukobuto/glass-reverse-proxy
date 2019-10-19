@@ -1,7 +1,10 @@
-module Monitor exposing (HeaderEntry, CommunicateEvent(..), RequestData, ResponseData, decodeRequestResponse)
+module Monitor exposing (..)
 
 import Json.Decode as Decode exposing (Decoder, andThen, decodeString, fail, field, int, list, map, map2, map8, nullable, string)
 import Time exposing (Posix, millisToPosix)
+
+
+-- Decode
 
 
 type alias HeaderEntry =
@@ -37,6 +40,12 @@ type alias ResponseData =
 type CommunicateEvent
     = Request RequestData
     | Response ResponseData
+
+
+type alias RequestAndResponse =
+    { requestData: RequestData
+    , responseData: Maybe ResponseData
+    }
 
 
 decodeRequestResponse json =
@@ -96,3 +105,33 @@ headerEntryDecoder =
 posixDecoder : Decoder Posix
 posixDecoder =
     int |> map millisToPosix
+
+
+-- UPDATE HELPER
+
+
+updateRequestAndResponseList : List RequestAndResponse -> CommunicateEvent -> List RequestAndResponse
+updateRequestAndResponseList items communicateEvent =
+    case communicateEvent of
+        Request data ->
+            { requestData = data
+            , responseData = Nothing
+            }
+            :: items
+
+        Response data ->
+            attachRequestToResponse items data
+
+
+attachRequestToResponse : List RequestAndResponse -> ResponseData -> List RequestAndResponse
+attachRequestToResponse requestAndResponses responseData =
+    List.map (attachResponseHelper responseData) requestAndResponses
+
+
+attachResponseHelper : ResponseData -> RequestAndResponse -> RequestAndResponse
+attachResponseHelper responseData requestAndResponse =
+    if requestAndResponse.requestData.id == responseData.id then
+        { requestAndResponse | responseData = Just responseData }
+    else
+        requestAndResponse
+
