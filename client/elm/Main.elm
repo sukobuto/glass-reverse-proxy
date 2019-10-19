@@ -708,9 +708,13 @@ formatTime : Time.Zone -> Posix -> String
 formatTime zone time =
     let
         hour = String.fromInt (toHour zone time)
+            |> String.padLeft 2 '0'
         minute = String.fromInt (toMinute zone time)
+            |> String.padLeft 2 '0'
         second = String.fromInt (toSecond zone time)
+            |> String.padLeft 2 '0'
         millis = String.fromInt (toMillis zone time)
+            |> String.padLeft 3 '0'
     in
     hour ++ ":" ++ minute ++ ":" ++ second ++ "." ++ millis
 
