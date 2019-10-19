@@ -1,7 +1,6 @@
 module Main exposing (main)
 
 import Browser
-import Bulma.CDN exposing (stylesheet)
 import Bulma.Modifiers as Mod exposing (..)
 import Bulma.Elements exposing (..)
 import Bulma.Columns exposing (..)
@@ -12,7 +11,7 @@ import Bulma.Modifiers.Typography as Tg exposing (textWeight, Weight(..), textCo
 import Cmd.Extra exposing (withCmd, withNoCmd, withCmds)
 import Update.Extra exposing (andThen)
 import Maybe.Extra as MaybeEx
-import Html exposing (Attribute, Html, br, code, div, form, main_, p, span, strong, text)
+import Html exposing (Attribute, Html, br, code, div, form, i, main_, p, span, strong, text)
 import Html.Attributes exposing (action, class, id, style, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
 import Json.Decode as Decode exposing (Error(..))
@@ -50,6 +49,7 @@ type alias Model =
     , errorMsg : String
     , zone : Time.Zone
     , windowHeight : Int
+    , darkMode : Bool
     }
 
 
@@ -129,6 +129,7 @@ init flags =
     , errorMsg = ""
     , zone = utc
     , windowHeight = flags.windowHeight
+    , darkMode = False
     }
     |> withCmds
         [ (WebSocket.connect "ws://localhost:8888" [ "echo-protocol" ])
@@ -155,6 +156,7 @@ type Msg
     | ClearRequestResponses
     | SetRequestBodyTreeViewState JsonTree.State
     | SetResponseBodyTreeViewState JsonTree.State
+    | ToggleDarkMode
     | NoOp
 
 
@@ -293,6 +295,10 @@ update msg model =
                     model
                     |> withNoCmd
 
+        ToggleDarkMode ->
+            { model | darkMode = not model.darkMode }
+            |> withNoCmd
+
         NoOp ->
             model
             |> withNoCmd
@@ -349,21 +355,32 @@ subscriptions _ =
 
 view : Model -> Html Msg
 view model =
-    main_ []
-        [ stylesheet
-        , toolBar model
+    let
+        attrs =
+            [ (if model.darkMode then [ class "inverted" ] else [])
+            ]
+            |> List.concat
+    in
+    main_ attrs
+        [ toolBar model
         , requestResponseView model
         ]
 
 
 toolBar : Model -> Html Msg
 toolBar model =
-    widescreenContainer [ class "tool-bar" ]
+    fullHDContainer []
         [ level []
             [ levelLeft [] (toolBarLeft model)
             , levelRight [] (toolBarRight model)
             ]
         ]
+    |> wrapElement (div [ class "tool-bar" ])
+
+
+wrapElement : (List (Html msg) -> Html msg) -> Html msg -> Html msg
+wrapElement container element =
+    container [ element ]
 
 
 toolBarLeft : Model -> List (Html Msg)
@@ -386,9 +403,27 @@ toolBarLeft model =
 
 toolBarRight : Model -> List (Html Msg)
 toolBarRight model =
-    [ levelItemText []
+    [ levelItem []
+        [ field []
+            [ control controlModifiers []
+                [ faIconButton [ onClick ToggleDarkMode ] "adjust" ]
+            ]
+        ]
+    , levelItemText []
         [ connectionState model ]
     ]
+
+
+faIconButton : List (Attribute Msg) -> String -> Html Msg
+faIconButton attributes iconName =
+    let
+        attrs =
+            attributes
+            |> List.append
+                [ class "icon-button" ]
+    in
+    icon Large attrs
+        [ i [ class ("fas fa-" ++ iconName) ] [] ]
 
 
 connectionState : Model -> Html Msg
@@ -416,7 +451,7 @@ connectionState model =
 
 requestResponseView : Model -> Html Msg
 requestResponseView model =
-    widescreenContainer []
+    fullHDContainer []
         [ columns { columnsModifiers | gap = Gap0 } []
             [ column listColumnModifiers []
                 [ requestResponseListView model ]
@@ -443,12 +478,8 @@ requestResponseDetailView model =
                 )
                 ]
             Nothing ->
-                [ hero { bold = False, size = Large, color = Mod.Light } []
-                    [ heroBody []
-                        [ container []
-                            [ title H1 [ textColor Tg.GreyLighter, textCentered ] [ text "Glass Reverse Proxy" ] ]
-                        ]
-                    ]
+                [ container [ class "request-response-detail--nothing" ]
+                    [ title H1 [ textColor Tg.GreyLighter, textCentered ] [ text "Glass Reverse Proxy" ] ]
                 ]
         )
 
@@ -512,6 +543,7 @@ bodyView msg treeStates body =
     treeStates.parseResult
         |> Result.map (\tree -> JsonTree.view tree treeConfig treeStates.treeState)
         |> Result.withDefault (textBodyView body)
+        |> wrapElement ( div [ style "font-size" "87%", style "overflow" "hidden" ] )
 
 
 textBodyView : String -> Html Msg
@@ -596,11 +628,15 @@ detailColumnModifiers =
 
 requestResponseListView : Model -> Html Msg
 requestResponseListView model =
-    div [ class "infinite-list-container request-response-list"
-        , InfiniteList.onScroll InfiniteListMsg
-        , id "request-response-list"
-        , style "height" ((model.windowHeight - 50) |> px)
-        ]
+    let
+        attrs =
+            [ class "infinite-list-container request-response-list"
+            , InfiniteList.onScroll InfiniteListMsg
+            , id "request-response-list"
+            , style "height" ((model.windowHeight - 50) |> px)
+            ]
+    in
+    div attrs
         [ InfiniteList.view
             (config model.windowHeight)
             model.requestAndResponseInfiniteList
@@ -622,14 +658,15 @@ requestAndResponseListItemView : Int -> Int -> ( Model, RequestAndResponse ) -> 
 requestAndResponseListItemView _ _ item =
     let
         (model, requestAndResponse) = item
+        attrs =
+            [ class "request-response-list__item" ]
+            |> List.append
+                ( MaybeEx.filter (\x -> x.requestAndResponse == requestAndResponse) model.detailViewModel
+                    |> Maybe.map (always [ class "request-response-list__item--viewing" ])
+                    |> Maybe.withDefault []
+                )
     in
-    div
-        [ class ("request-response-list__item" ++ (
-                MaybeEx.filter (\x -> x.requestAndResponse == requestAndResponse) model.detailViewModel
-                    |> Maybe.map (\x -> " request-response-list__item--viewing")
-                    |> Maybe.withDefault ""
-            ))
-        ]
+    div attrs
         [ message
             { size = Standard
             , color =
