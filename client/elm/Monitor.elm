@@ -1,6 +1,6 @@
 module Monitor exposing (..)
 
-import Json.Decode as Decode exposing (Decoder, andThen, decodeString, fail, field, int, list, map, map2, map8, nullable, string)
+import Json.Decode exposing (Decoder, andThen, decodeString, fail, field, int, list, map, map2, map8, nullable, string)
 import Time exposing (Posix, millisToPosix)
 
 
