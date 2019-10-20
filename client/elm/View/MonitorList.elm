@@ -24,7 +24,7 @@ requestResponseListView model infiniteListMsg=
             [ class "infinite-list-container request-response-list"
             , InfiniteList.onScroll infiniteListMsg
             , id "request-response-list"
-            , style "height" ((model.windowHeight - 50) |> px)
+            , style "height" ((model.windowHeight - 58) |> px)
             ]
     in
     div attrs
@@ -39,7 +39,7 @@ config windowHeight =
     InfiniteList.config
         { itemView = requestAndResponseListItemView
         , itemHeight = InfiniteList.withConstantHeight 60
-        , containerHeight = windowHeight - 50
+        , containerHeight = windowHeight - 58
         }
         |> InfiniteList.withOffset 300
         |> InfiniteList.withClass "my-class"

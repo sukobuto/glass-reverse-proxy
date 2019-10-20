@@ -5,6 +5,8 @@
   - [x] https://github.com/FabienHenon/elm-infinite-list-view/tree/3.1.0
   - [x] https://github.com/klazuka/elm-json-tree-view
   - [x] リクエストとレスポンスのマッピング
+  - [ ] 0 request なら CLEAR ボタン非表示
+  - [ ] リストにリクエストメソッドと content-type , RTT を表示
   - [ ] content-type が image なら画像として表示
 - [ ] 通信内容のキャプチャ開始・停止コマンド実装
 - [ ] プロキシポート等の設定を変えられるようにする

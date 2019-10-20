@@ -37,13 +37,14 @@ urlShorten url =
                 Nothing ->
                     0
         indexOfQuestionMark =
-            case (String.indices "?" url |> List.reverse |> List.head) of
-                Just idx ->
-                    idx
-                Nothing ->
-                    -1
+            String.indices "?" url |> List.reverse |> List.head
     in
-        String.slice lastIndexOfSlash indexOfQuestionMark url
+        case indexOfQuestionMark of
+            Just idx ->
+                String.slice lastIndexOfSlash idx url
+
+            Nothing ->
+                String.dropLeft lastIndexOfSlash url
 
 
 wrapElement : (List (Html msg) -> Html msg) -> Html msg -> Html msg

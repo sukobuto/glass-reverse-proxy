@@ -25,7 +25,7 @@ requestResponseDetailView : Model -> Html Msg
 requestResponseDetailView model =
     div
         [ class "request-response-detail"
-        , style "height" ((model.windowHeight - 50) |> px)
+        , style "height" ((model.windowHeight - 58) |> px)
         ]
         (case model.detailViewModel of
             Just vm ->
