@@ -22,29 +22,42 @@ formatTime zone time =
     hour ++ ":" ++ minute ++ ":" ++ second ++ "." ++ millis
 
 
+posixDiff : Posix -> Posix -> Int
+posixDiff from to =
+    (Time.posixToMillis to) - (Time.posixToMillis from)
+
+
 px : Int -> String
 px size =
     (String.fromInt size) ++ "px"
 
 
-urlShorten : String -> String
-urlShorten url =
+trimWithMarks : String -> String -> String -> String
+trimWithMarks start end text =
     let
-        lastIndexOfSlash =
-            case (String.indices "/" url |> List.reverse |> List.head) of
-                Just idx ->
-                    idx + 1
-                Nothing ->
+        startIdx =
+            case start of
+                "" ->
                     0
-        indexOfQuestionMark =
-            String.indices "?" url |> List.reverse |> List.head
+                _ ->
+                    case (String.indices start text |> List.reverse |> List.head) of
+                        Just idx ->
+                            idx + 1
+                        Nothing ->
+                            0
+        endIdx =
+            case end of
+                "" ->
+                    Nothing
+                _ ->
+                    String.indices end text |> List.reverse |> List.head
     in
-        case indexOfQuestionMark of
+        case endIdx of
             Just idx ->
-                String.slice lastIndexOfSlash idx url
+                String.slice startIdx idx text
 
             Nothing ->
-                String.dropLeft lastIndexOfSlash url
+                String.dropLeft startIdx text
 
 
 wrapElement : (List (Html msg) -> Html msg) -> Html msg -> Html msg

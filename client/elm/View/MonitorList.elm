@@ -10,8 +10,9 @@ import InfiniteList
 import Html exposing (Attribute, Html, br, code, div, span, text)
 import Html.Attributes exposing (class, id, style)
 import Html.Events exposing (onClick)
-import Helpers exposing (px, formatTime, urlShorten)
-import Monitor exposing (RequestAndResponse)
+import Helpers exposing (formatTime, posixDiff, px, trimWithMarks)
+import Monitor exposing (RequestAndResponse, getHeader)
+import Time exposing (Posix)
 
 
 -- MODEL
@@ -70,36 +71,57 @@ requestAndResponseListItemView _ _ item =
             , onClick (ViewRequestAndResponse requestAndResponse)
             ]
             [ messageBody []
-                [ responseStatusBadge requestAndResponse.responseData
-                , text " "
-                , text (urlShorten requestAndResponse.requestData.url)
+                [ span [] [ text ( requestAndResponse.requestData.method ++ " " ) ]
+                , text ( trimWithMarks "/" "?" requestAndResponse.requestData.url )
                 , br [] []
-                , span
-                    [ textColor Tg.Grey
-                    , textSize Tg.Small
-                    ]
-                    [ text (formatTime model.zone requestAndResponse.requestData.start) ]
+                , ( case requestAndResponse.responseData of
+                      Just data -> responseInfo requestAndResponse.requestData.start data
+                      Nothing -> responseWaiting
+                  )
                 ]
             ]
         ]
 
 
-responseStatusBadge : Maybe ResponseData -> Html Msg
-responseStatusBadge responseData =
-    case responseData of
-        Just data ->
-            span
-                [ statusToTextColor (Just data.statusCode)
-                , textWeight Bold
-                ]
-                [ text (data.statusCode |> String.fromInt) ]
+responseWaiting : Html Msg
+responseWaiting =
+    span
+        [ statusToTextColor Nothing
+        , textWeight Bold
+        ]
+        [ text "WAIT" ]
 
-        Nothing ->
-            span
-                [ statusToTextColor Nothing
-                , textWeight Bold
-                ]
-                [ text "wait" ]
+
+responseInfo : Posix -> ResponseData -> Html Msg
+responseInfo startTime data =
+    div []
+        [ span
+            [ statusToTextColor ( Just data.statusCode )
+            , textWeight Bold
+            ]
+            [ text ( data.statusCode |> String.fromInt ) ]
+        , text " "
+        , span
+            [ class "response-info-detail-item" ]
+            [ text
+                ( data.headers
+                    |> getHeader "content-type"
+                    |> Maybe.map ( trimWithMarks "" ";" )
+                    |> Maybe.withDefault "..."
+                )
+            ]
+        , text " "
+        , span
+            [ class "response-info-detail-item"
+            , style "white-space" "pre-wrap"
+            ]
+            [ text
+                ( ( ( String.fromInt ( posixDiff startTime data.end ) )
+                        |> String.padLeft 4 ' '
+                  ) ++ "ms"
+                )
+            ]
+        ]
 
 
 statusToTagColor : Maybe Int -> Mod.Color
@@ -133,7 +155,7 @@ statusToTextColor statusCode =
 
 
 
---
+-- HELPERS
 
 
 scrollToBottom : Model -> Msg -> Cmd Msg

@@ -32,6 +32,9 @@ main {
         padding: 2px 5px;
         height: 58px;
       }
+      .response-info-detail-item {
+        font-size: 80%;
+      }
     }
     &--viewing &__inner,
     &--viewing:hover &__inner {

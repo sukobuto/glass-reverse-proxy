@@ -135,3 +135,14 @@ attachResponseHelper responseData requestAndResponse =
     else
         requestAndResponse
 
+
+
+-- HELPER
+
+
+getHeader : String -> List HeaderEntry -> Maybe String
+getHeader name headers =
+    headers
+        |> List.filter (\x -> x.name == name)
+        |> List.head
+        |> Maybe.map (\x -> x.value)

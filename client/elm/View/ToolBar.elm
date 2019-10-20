@@ -29,16 +29,23 @@ toolBarLeft model =
         [ strong [] [ text (String.fromInt <| List.length model.requestAndResponses) ]
         , text "requests"
         ]
-    , levelItem []
-        [ field []
-            [ control controlModifiers []
-                [ button buttonModifiers
-                    [ onClick ClearRequestResponses ]
-                    [ text "CLEAR" ]
-                ]
-            ]
-        ]
     ]
+    |> List.append
+        (case ( List.head model.requestAndResponses ) of
+            Just _ ->
+                [ levelItem []
+                    [ field []
+                        [ control controlModifiers []
+                            [ button buttonModifiers
+                                [ onClick ClearRequestResponses ]
+                                [ text "CLEAR" ]
+                            ]
+                        ]
+                    ]
+                ]
+
+            Nothing -> []
+        )
 
 
 toolBarRight : Model -> List (Html Msg)
