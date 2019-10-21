@@ -92,40 +92,72 @@ detailRequestView model vm =
         contentType = getHeader "content-type" data.headers
             |> Maybe.withDefault ""
     in
-    div [ class "detail-section" ]
-        <| List.concat
-            [ [ div [ class "section-name" ] [ text "REQUEST" ]
-                , p [ style "margin-bottom" "4px" ]
-                    [ code []
-                        [ text data.method
-                        , text " "
-                        , text data.url
-                        , text " HTTP/"
-                        , text data.httpVersion
-                        ]
-                    ]
-                , tagListView
-                    [ ( "start", (formatTime model.zone data.start) ) ]
-                , headersView data.headers
-                , text contentType
+    div [ class "detail-section" ] <| List.concat
+        [ [ div [ class "section-name" ] [ text "REQUEST" ]
+          , p [ style "margin-bottom" "4px" ]
+              [ code []
+                  [ text data.method
+                  , text " "
+                  , text data.url
+                  , text " HTTP/"
+                  , text data.httpVersion
+                  ]
+              ]
+          , tagListView
+              [ ( "start", (formatTime model.zone data.start) ) ]
+          , headersView data.headers
+          ]
+        , ( data.body
+            |> Maybe.map
+                (\body ->
+                    case (bodyType contentType) of
+                        Plain -> textBodyView body
+                        Html -> textBodyView body
+                        Json -> jsonBodyView SetRequestBodyTreeViewState vm.requestBodyTreeStates body
+                        JavaScript -> textBodyView body
+                        Css -> textBodyView body
+                        Image _ -> imageBodyView contentType body
+                        Empty -> emptyBodyView
+                        Unknown _ -> textBodyView body
+                )
+            |> Maybe.map (\x -> [x])
+            |> Maybe.withDefault []
+          )
+        ]
+
+
+detailResponseView : Model -> DetailViewModel -> Monitor.ResponseData -> Html Msg
+detailResponseView model vm data =
+    let
+        contentType = getHeader "content-type" data.headers
+            |> Maybe.withDefault ""
+    in
+    div [ class "detail-section" ] <| List.concat
+        [
+            [ div [ class "section-name" ] [ text "RESPONSE" ]
+            , tagListView
+                [ ("status", ((String.fromInt data.statusCode) ++ data.statusMessage))
+                , ("end", (formatTime model.zone data.end))
                 ]
-            , ( data.body
-                |> Maybe.map
-                    (\body ->
-                        case (bodyType contentType) of
-                            Plain -> textBodyView body
-                            Html -> textBodyView body
-                            Json -> jsonBodyView SetRequestBodyTreeViewState vm.requestBodyTreeStates body
-                            JavaScript -> textBodyView body
-                            Css -> textBodyView body
-                            Image _ -> imageBodyView contentType body
-                            Empty -> textBodyView body
-                            Unknown _ -> textBodyView body
-                    )
-                |> Maybe.map (\x -> [x])
-                |> Maybe.withDefault []
-              )
+            , headersView data.headers
             ]
+            , ( data.body
+              |> Maybe.map
+                  (\body ->
+                      case (bodyType contentType) of
+                          Plain -> textBodyView body
+                          Html -> textBodyView body
+                          Json -> jsonBodyView SetResponseBodyTreeViewState vm.responseBodyTreeStates body
+                          JavaScript -> textBodyView body
+                          Css -> textBodyView body
+                          Image _ -> imageBodyView contentType body
+                          Empty -> emptyBodyView
+                          Unknown _ -> textBodyView body
+                  )
+              |> Maybe.map (\x -> [x])
+              |> Maybe.withDefault []
+            )
+        ]
 
 
 headersView : List Monitor.HeaderEntry -> Html Msg
@@ -146,6 +178,11 @@ headersView headers =
             )
             headers
         ]
+
+
+emptyBodyView : Html Msg
+emptyBodyView =
+    text ""
 
 
 jsonBodyView : (JsonTree.State -> Msg) -> TreeStates -> String -> Html Msg
@@ -183,41 +220,6 @@ imageBodyView contentType image =
         imageUrl = "data:" ++ contentType ++ ";base64," ++ image
     in
     img [ src imageUrl ] []
-
-
-detailResponseView : Model -> DetailViewModel -> Monitor.ResponseData -> Html Msg
-detailResponseView model vm data =
-    let
-        contentType = getHeader "content-type" data.headers
-            |> Maybe.withDefault ""
-    in
-    div [ class "detail-section" ] <| List.concat
-        [
-            [ div [ class "section-name" ] [ text "RESPONSE" ]
-            , tagListView
-                [ ("status", ((String.fromInt data.statusCode) ++ data.statusMessage))
-                , ("end", (formatTime model.zone data.end))
-                ]
-            , headersView data.headers
-            ]
-            , ( data.body
-              |> Maybe.map
-                  (\body ->
-                      case (bodyType contentType) of
-                          Plain -> textBodyView body
-                          Html -> textBodyView body
-                          Json -> jsonBodyView SetResponseBodyTreeViewState vm.responseBodyTreeStates body
-                          JavaScript -> textBodyView body
-                          Css -> textBodyView body
-                          Image _ -> imageBodyView contentType body
---                          Image _ -> textBodyView body
-                          Empty -> textBodyView body
-                          Unknown _ -> textBodyView body
-                  )
-              |> Maybe.map (\x -> [x])
-              |> Maybe.withDefault []
-            )
-        ]
 
 
 tagListView : List (String, String) -> Html Msg

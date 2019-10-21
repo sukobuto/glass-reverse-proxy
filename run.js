@@ -90,10 +90,10 @@ ev.on('got-response', data => {
 
 proxy.on('proxyReq', (proxyReq, req, res, options) => {
     const start = new Date();
-    let body = null;
+    const bodyBuffer = [];
     req.id = ulid();    // response との紐付けのために ID をふる
     req.on('data', chunk => {
-        body = (body == null ? '' : body) + chunk;
+        bodyBuffer.push(chunk);
     });
     req.on('end', () => {
         const end = new Date();
@@ -103,7 +103,7 @@ proxy.on('proxyReq', (proxyReq, req, res, options) => {
             'url': req.url,
             'httpVersion': req.httpVersion,
             'method': req.method,
-            'body': body,
+            'body': (bodyBuffer ? Buffer.concat(bodyBuffer).toString('base64') : null),
             'start': start.getTime(),
             'end': end.getTime(),
         });

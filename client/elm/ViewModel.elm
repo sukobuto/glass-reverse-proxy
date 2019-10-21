@@ -38,9 +38,9 @@ makeDetailViewModel requestBodyTreeStates responseBodyTreeStates requestAndRespo
     let
         requestBodyParseResult =
             requestAndResponse.requestData.body
-            |> Maybe.withDefault ""
+            |> Maybe.withDefault "no body"
             |> Base64.decode
-            |> Result.withDefault ""
+            |> Result.withDefault "cannot decode base64"
             |> JsonTree.parseString
         responseBodyParseResult =
             requestAndResponse.responseData
