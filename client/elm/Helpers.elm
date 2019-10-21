@@ -52,12 +52,12 @@ trimWithMarks start end text =
                 _ ->
                     String.indices end text |> List.reverse |> List.head
     in
-        case endIdx of
-            Just idx ->
-                String.slice startIdx idx text
+    case endIdx of
+        Just idx ->
+            String.slice startIdx idx text
 
-            Nothing ->
-                String.dropLeft startIdx text
+        Nothing ->
+            String.dropLeft startIdx text
 
 
 wrapElement : (List (Html msg) -> Html msg) -> Html msg -> Html msg

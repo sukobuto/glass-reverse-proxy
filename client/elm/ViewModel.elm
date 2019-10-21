@@ -1,5 +1,6 @@
 module ViewModel exposing (..)
 
+import Base64
 import Json.Decode as Decode
 import JsonTree
 import Monitor
@@ -38,11 +39,15 @@ makeDetailViewModel requestBodyTreeStates responseBodyTreeStates requestAndRespo
         requestBodyParseResult =
             requestAndResponse.requestData.body
             |> Maybe.withDefault ""
+            |> Base64.decode
+            |> Result.withDefault ""
             |> JsonTree.parseString
         responseBodyParseResult =
             requestAndResponse.responseData
             |> Maybe.andThen (\x -> x.body)
             |> Maybe.withDefault ""
+            |> Base64.decode
+            |> Result.withDefault ""
             |> JsonTree.parseString
     in
     { requestAndResponse = requestAndResponse

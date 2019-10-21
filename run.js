@@ -111,9 +111,9 @@ proxy.on('proxyReq', (proxyReq, req, res, options) => {
 });
 proxy.on('proxyRes', (proxyRes, req, res) => {
     const start = new Date();
-    let body = null;
+    const bodyBuffer = [];
     proxyRes.on('data', chunk => {
-        body = (body == null ? '' : body) + chunk;
+        bodyBuffer.push(chunk);
     });
     proxyRes.on('end', () => {
         const end = new Date();
@@ -123,7 +123,7 @@ proxy.on('proxyRes', (proxyRes, req, res) => {
             'headers': Object.entries(proxyRes.headers).map(([key, value]) => ({ name: key, value })),
             'statusCode': proxyRes.statusCode,
             'statusMessage': proxyRes.statusMessage,
-            'body': body,
+            'body': (bodyBuffer ? Buffer.concat(bodyBuffer).toString('base64') : null),
             'start': start.getTime(),
             'end': end.getTime(),
         });

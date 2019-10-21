@@ -2,20 +2,61 @@ module View.MonitorDetail exposing (..)
 
 
 import JsonTree exposing (Node)
-import Monitor
-import Helpers exposing (formatTime, px, wrapElement)
+import Monitor exposing (getHeader)
+import Helpers exposing (formatTime, px, trimWithMarks, wrapElement)
 import ModelAndMsg exposing (Model, Msg(..))
 
-
+import Base64
 import Bulma.Modifiers as Mod exposing (..)
 import Bulma.Elements exposing (..)
 import Bulma.Layout exposing (..)
 import Bulma.Form exposing (control, controlModifiers, controlTextArea, controlTextAreaModifiers, multilineFields)
 import Bulma.Modifiers.Typography as Tg exposing (Weight(..), textColor, textCentered)
-import Html exposing (Attribute, Html, code, div, p, text)
-import Html.Attributes exposing (class, style, value)
+import Html exposing (Attribute, Html, code, div, img, p, text)
+import Html.Attributes exposing (class, src, style, value)
 import ViewModel exposing (DetailViewModel, ParseResult, TreeStates)
 
+
+
+type BodyType
+    = Plain
+    | Html
+    | Json
+    | JavaScript
+    | Css
+    | Image String
+    | Empty
+    | Unknown String
+
+
+bodyType : String -> BodyType
+bodyType contentType =
+    let
+        type_ = trimWithMarks "" "/" contentType
+        subtype = trimWithMarks "/" ";" contentType
+    in
+    case type_ of
+        "text" ->
+            case subtype of
+                "plain" -> Plain
+                "html" -> Html
+                "css" -> Css
+                _ -> Unknown contentType
+
+        "application" ->
+            case subtype of
+                "javascript" -> JavaScript
+                "json" -> Json
+                _ -> Unknown contentType
+
+        "image" ->
+            Image subtype
+
+        "" ->
+            Empty
+
+        _ ->
+            Unknown contentType
 
 
 -- VIEW
@@ -48,6 +89,8 @@ detailRequestView : Model -> DetailViewModel -> Html Msg
 detailRequestView model vm =
     let
         data = vm.requestAndResponse.requestData
+        contentType = getHeader "content-type" data.headers
+            |> Maybe.withDefault ""
     in
     div [ class "detail-section" ]
         <| List.concat
@@ -61,12 +104,26 @@ detailRequestView model vm =
                         , text data.httpVersion
                         ]
                     ]
-                , taggedInfo "start" (formatTime model.zone data.start)
+                , tagListView
+                    [ ( "start", (formatTime model.zone data.start) ) ]
                 , headersView data.headers
+                , text contentType
                 ]
-            , (case data.body of
-                  Just body -> [bodyView SetRequestBodyTreeViewState vm.requestBodyTreeStates body]
-                  Nothing -> []
+            , ( data.body
+                |> Maybe.map
+                    (\body ->
+                        case (bodyType contentType) of
+                            Plain -> textBodyView body
+                            Html -> textBodyView body
+                            Json -> jsonBodyView SetRequestBodyTreeViewState vm.requestBodyTreeStates body
+                            JavaScript -> textBodyView body
+                            Css -> textBodyView body
+                            Image _ -> imageBodyView contentType body
+                            Empty -> textBodyView body
+                            Unknown _ -> textBodyView body
+                    )
+                |> Maybe.map (\x -> [x])
+                |> Maybe.withDefault []
               )
             ]
 
@@ -91,8 +148,8 @@ headersView headers =
         ]
 
 
-bodyView : (JsonTree.State -> Msg) -> TreeStates -> String -> Html Msg
-bodyView msg treeStates body =
+jsonBodyView : (JsonTree.State -> Msg) -> TreeStates -> String -> Html Msg
+jsonBodyView msg treeStates body =
     let
         treeConfig =
             { onSelect = Nothing
@@ -112,15 +169,28 @@ textBodyView body =
         modifiers =
             { controlTextAreaModifiers | readonly = True }
         controlAttrs = []
+        textBody = Base64.decode body
+            |> Result.withDefault ""
         textAreaAttrs =
-            [ value body ]
+            [ value textBody ]
     in
     controlTextArea modifiers controlAttrs textAreaAttrs []
 
 
+imageBodyView : String -> String -> Html Msg
+imageBodyView contentType image =
+    let
+        imageUrl = "data:" ++ contentType ++ ";base64," ++ image
+    in
+    img [ src imageUrl ] []
+
 
 detailResponseView : Model -> DetailViewModel -> Monitor.ResponseData -> Html Msg
 detailResponseView model vm data =
+    let
+        contentType = getHeader "content-type" data.headers
+            |> Maybe.withDefault ""
+    in
     div [ class "detail-section" ] <| List.concat
         [
             [ div [ class "section-name" ] [ text "RESPONSE" ]
@@ -130,9 +200,22 @@ detailResponseView model vm data =
                 ]
             , headersView data.headers
             ]
-            , (case data.body of
-                Just body -> [bodyView SetResponseBodyTreeViewState vm.responseBodyTreeStates body]
-                Nothing -> []
+            , ( data.body
+              |> Maybe.map
+                  (\body ->
+                      case (bodyType contentType) of
+                          Plain -> textBodyView body
+                          Html -> textBodyView body
+                          Json -> jsonBodyView SetResponseBodyTreeViewState vm.responseBodyTreeStates body
+                          JavaScript -> textBodyView body
+                          Css -> textBodyView body
+                          Image _ -> imageBodyView contentType body
+--                          Image _ -> textBodyView body
+                          Empty -> textBodyView body
+                          Unknown _ -> textBodyView body
+                  )
+              |> Maybe.map (\x -> [x])
+              |> Maybe.withDefault []
             )
         ]
 
