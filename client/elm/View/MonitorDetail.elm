@@ -3,7 +3,7 @@ module View.MonitorDetail exposing (..)
 
 import JsonTree exposing (Node)
 import Monitor exposing (getHeader)
-import Helpers exposing (formatTime, px, trimWithMarks, wrapElement)
+import Helpers exposing (formatTime, px, trimWithMarks, wrapWith)
 import ModelAndMsg exposing (Model, Msg(..))
 
 import Base64
@@ -197,7 +197,7 @@ jsonBodyView msg treeStates body =
     treeStates.parseResult
         |> Result.map (\tree -> JsonTree.view tree treeConfig treeStates.treeState)
         |> Result.withDefault (textBodyView body)
-        |> wrapElement ( div [ style "font-size" "87%", style "overflow" "hidden" ] )
+        |> wrapWith ( div [ style "font-size" "87%", style "overflow" "hidden" ] )
 
 
 textBodyView : String -> Html Msg

@@ -3,7 +3,7 @@ module View.ToolBar exposing (..)
 import Bulma.Elements exposing (button, buttonModifiers)
 import Bulma.Form exposing (control, controlModifiers, field)
 import Bulma.Layout exposing (fullHDContainer, level, levelItem, levelItemText, levelLeft, levelRight)
-import Helpers exposing (wrapElement)
+import Helpers exposing (wrapWith)
 import Html exposing (Html, div, strong, text)
 import Html.Attributes exposing (class)
 import Html.Events exposing (onClick)
@@ -20,7 +20,7 @@ toolBar model =
             , levelRight [] (toolBarRight model)
             ]
         ]
-    |> wrapElement (div [ class "tool-bar" ])
+    |> wrapWith (div [ class "tool-bar" ])
 
 
 toolBarLeft : Model -> List (Html Msg)
