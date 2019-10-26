@@ -78,7 +78,9 @@ wsServer.on('request', request => {
 });
 
 const proxy = httpProxy.createProxyServer({
-    target: proxyTarget
+    target: proxyTarget,
+    timeout: 3600000,
+    proxyTimeout: 3600000,
 });
 
 ev.on('got-request', data => {
@@ -128,6 +130,10 @@ proxy.on('proxyRes', (proxyRes, req, res) => {
             'end': end.getTime(),
         });
     });
+});
+proxy.on('error', function (err, req, res) {
+    console.log(err);
+    res.end();
 });
 proxy.listen(proxyPort, () => {
     log(`Server (proxy) is listening on port ${proxyPort}`);
