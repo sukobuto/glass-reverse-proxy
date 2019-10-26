@@ -10,7 +10,7 @@ import InfiniteList
 import Html exposing (Attribute, Html, br, code, div, span, text)
 import Html.Attributes exposing (class, id, style)
 import Html.Events exposing (onClick)
-import Helpers exposing (formatTime, posixDiff, px, trimWithMarks)
+import Helpers exposing (formatTime, posixDiff, px, trimWithMarks, wrapWith)
 import Monitor exposing (RequestAndResponse, getHeader)
 import Time exposing (Posix)
 
@@ -94,6 +94,10 @@ responseWaiting =
 
 responseInfo : Posix -> ResponseData -> Html Msg
 responseInfo startTime data =
+    let
+        elapsed = ( posixDiff startTime data.end |> String.fromInt ) ++ "ms"
+        elapsedPad = String.repeat (7 - ( String.length elapsed )) "0"
+    in
     div []
         [ span
             [ statusToTextColor ( Just data.statusCode )
@@ -101,24 +105,21 @@ responseInfo startTime data =
             ]
             [ text ( data.statusCode |> String.fromInt ) ]
         , text " "
-        , span
+        , code
+            [ class "response-info-detail-item"
+            , style "white-space" "pre-wrap"
+            ]
+            [ span [ class "elapsed-pad" ] [ text elapsedPad ]
+            , text elapsed
+            ]
+        , text " "
+        , code
             [ class "response-info-detail-item" ]
             [ text
                 ( data.headers
                     |> getHeader "content-type"
                     |> Maybe.map ( trimWithMarks "" ";" )
                     |> Maybe.withDefault "..."
-                )
-            ]
-        , text " "
-        , span
-            [ class "response-info-detail-item"
-            , style "white-space" "pre-wrap"
-            ]
-            [ text
-                ( ( ( String.fromInt ( posixDiff startTime data.end ) )
-                        |> String.padLeft 4 ' '
-                  ) ++ "ms"
                 )
             ]
         ]

@@ -35,6 +35,12 @@ main {
       .response-info-detail-item {
         font-size: 80%;
       }
+      code.response-info-detail-item {
+        color: grey;
+      }
+      .elapsed-pad {
+        opacity: 0.3;
+      }
     }
     &--viewing &__inner,
     &--viewing:hover &__inner {
