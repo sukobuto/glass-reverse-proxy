@@ -1,10 +1,12 @@
 module Main exposing (main)
 
 import Browser
+import Browser.Navigation as Nav
 import Cmd.Extra exposing (withCmd, withNoCmd, withCmds)
 import Update.Extra exposing (andThen)
 import Json.Decode as Decode exposing (Error(..))
 import Task
+import Url
 import ViewModel exposing (openDetail, parseJson, updateDetailTreeResult, updateDetailTreeState)
 import WebSocket
 import Time exposing (Posix, utc)
@@ -23,11 +25,13 @@ import View.MonitorList
 
 
 main =
-    Browser.element
+    Browser.application
         { init = init
         , update = update
         , subscriptions = subscriptions
         , view = View.Layout.view
+        , onUrlRequest = LinkClicked
+        , onUrlChange = UrlChanged
         }
 
 
@@ -39,9 +43,17 @@ type alias Flags =
     { windowHeight : Int }
 
 
-init : Flags -> ( Model, Cmd Msg )
-init flags =
-    { socketInfo = Unopened
+init : Flags -> Url.Url -> Nav.Key -> ( Model, Cmd Msg )
+init flags url _ =
+    let
+        wsPort =
+            url.port_
+            |> Maybe.map (\p -> ":" ++ ( String.fromInt p ))
+            |> Maybe.withDefault ""
+        wsUrl = "ws://" ++ url.host ++ wsPort
+    in
+    { location = url
+    , socketInfo = Unopened
     , requestAndResponses = []
     , requestAndResponseDisplayItems = []
     , requestAndResponseInfiniteList = InfiniteList.init
@@ -52,7 +64,7 @@ init flags =
     , darkMode = False
     }
     |> withCmds
-        [ (WebSocket.connect "ws://localhost:8888" [ "echo-protocol" ])
+        [ (WebSocket.connect wsUrl [ "echo-protocol" ])
         , Task.perform AdjustTimeZone Time.here
         ]
 
@@ -64,6 +76,15 @@ init flags =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+
+        UrlChanged location ->
+            { model | location = location }
+            |> withNoCmd
+
+        LinkClicked _ ->
+            model
+            |> withNoCmd
+
         SocketConnect socketInfo ->
             { model | socketInfo = Connected socketInfo }
             |> withNoCmd

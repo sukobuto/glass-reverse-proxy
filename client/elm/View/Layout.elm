@@ -1,5 +1,6 @@
 module View.Layout exposing (..)
 
+import Browser
 import Bulma.Modifiers exposing (..)
 import Bulma.Columns exposing (..)
 import Bulma.Layout exposing (..)
@@ -11,7 +12,7 @@ import Html.Attributes exposing (class)
 import View.ToolBar exposing (toolBar)
 
 
-view : Model -> Html Msg
+view : Model -> Browser.Document Msg
 view model =
     let
         attrs =
@@ -19,10 +20,14 @@ view model =
             ]
             |> List.concat
     in
-    main_ attrs
-        [ toolBar model
-        , requestResponseView model
+    { title = "GlassProxy"
+    , body =
+        [ main_ attrs
+            [ toolBar model
+            , requestResponseView model
+            ]
         ]
+    }
 
 
 requestResponseView : Model -> Html Msg

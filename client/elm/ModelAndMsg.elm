@@ -1,15 +1,18 @@
 module ModelAndMsg exposing (..)
 
+import Browser
 import Time
 import Monitor
 import InfiniteList
+import Url
 import WebSocket
 import JsonTree
 import ViewModel
 
 
 type alias Model =
-    { socketInfo : SocketStatus
+    { location : Url.Url
+    , socketInfo : SocketStatus
     , requestAndResponses: List Monitor.RequestAndResponse
     , requestAndResponseDisplayItems: List Monitor.RequestAndResponse
     , requestAndResponseInfiniteList: InfiniteList.Model
@@ -29,6 +32,8 @@ type SocketStatus
 
 type Msg
     = NoOp
+    | UrlChanged Url.Url
+    | LinkClicked Browser.UrlRequest
     | SocketConnect WebSocket.ConnectionInfo
     | SocketReconnect
     | SocketClosed Int
