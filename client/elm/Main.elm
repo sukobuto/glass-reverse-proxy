@@ -5,14 +5,15 @@ import Cmd.Extra exposing (withCmd, withNoCmd, withCmds)
 import Update.Extra exposing (andThen)
 import Json.Decode as Decode exposing (Error(..))
 import Task
-import ViewModel exposing (openDetail, updateRequestBodyTreeViewState, updateResponseBodyTreeViewState)
+import ViewModel exposing (openDetail, parseJson, updateDetailTreeResult, updateDetailTreeState)
 import WebSocket
 import Time exposing (Posix, utc)
 import InfiniteList
 import Browser.Events exposing (onResize)
+import Maybe.Extra as MaybeEx
 
 import ModelAndMsg exposing (Model, SocketStatus(..), Msg(..))
-import Monitor exposing (HeaderEntry, CommunicateEvent(..), RequestData, ResponseData, decodeRequestResponse, RequestAndResponse)
+import Monitor exposing (CommunicateEvent(..), HeaderEntry, RequestAndResponse, RequestData, RequestOrResponse(..), ResponseData, decodeRequestResponse)
 import View.Layout
 import View.MonitorList
 
@@ -94,6 +95,7 @@ update msg model =
                     { model | requestAndResponses = requestAndResponses }
                     |> withNoCmd
                     |> andThen update UpdateDisplayItems
+                    |> andThen update UpdateDetail
 
                 Err e ->
                     { model | errorMsg = (Decode.errorToString e) }
@@ -126,8 +128,38 @@ update msg model =
             { model | requestAndResponseInfiniteList = infiniteList }
             |> withNoCmd
 
-        ViewRequestAndResponse requestAndResponse ->
-            { model | detailViewModel = (openDetail requestAndResponse) }
+        ShowDetail requestAndResponse ->
+            let
+                detailViewModel = openDetail requestAndResponse
+            in
+            { model | detailViewModel = detailViewModel }
+            |> withCmds
+                [ Task.perform ( TreeViewParsed Request ) ( parseJson Request detailViewModel )
+                , Task.perform ( TreeViewParsed Response ) ( parseJson Response detailViewModel )
+                ]
+
+        UpdateDetail ->
+            model.detailViewModel
+            |> Maybe.andThen
+                (\vm ->
+                    Monitor.findRequestAndResponseById vm.requestAndResponse.requestData.id model.requestAndResponses
+                    -- 同じ RequestAndResponse を持っている場合は更新の必要がないため Nothing に倒す
+                    |> MaybeEx.filter (\reqAndRes -> reqAndRes /= vm.requestAndResponse)
+                )
+            |> Maybe.map
+                (\reqAndRes ->
+                    model
+                    |> withNoCmd
+                    |> andThen update ( ShowDetail reqAndRes )
+                )
+            |> Maybe.withDefault ( model |> withNoCmd )
+
+        TreeViewParsed reqOrRes r ->
+            { model | detailViewModel = ( updateDetailTreeResult reqOrRes r model.detailViewModel ) }
+            |> withNoCmd
+
+        TreeViewStateUpdated reqOrRes state ->
+            { model | detailViewModel = ( updateDetailTreeState reqOrRes state model.detailViewModel ) }
             |> withNoCmd
 
         ClearRequestResponses ->
@@ -140,20 +172,6 @@ update msg model =
 
         WindowResized _ h ->
             { model | windowHeight = h }
-            |> withNoCmd
-
-        SetRequestBodyTreeViewState state ->
-            { model |
-              detailViewModel =
-                  ( updateRequestBodyTreeViewState model.detailViewModel state )
-            }
-            |> withNoCmd
-
-        SetResponseBodyTreeViewState state ->
-            { model |
-              detailViewModel =
-                  ( updateResponseBodyTreeViewState model.detailViewModel state )
-            }
             |> withNoCmd
 
         ToggleDarkMode ->

@@ -68,7 +68,7 @@ requestAndResponseListItemView _ _ item =
                 )
             }
             [ class "request-response-list__item__inner"
-            , onClick (ViewRequestAndResponse requestAndResponse)
+            , onClick (ShowDetail requestAndResponse)
             ]
             [ messageBody []
                 [ span [] [ text ( requestAndResponse.requestData.method ++ " " ) ]

@@ -2,7 +2,7 @@ module View.MonitorDetail exposing (..)
 
 
 import JsonTree exposing (Node)
-import Monitor exposing (getHeader)
+import Monitor exposing (getHeader, RequestOrResponse(..))
 import Helpers exposing (formatTime, px, trimWithMarks, wrapWith)
 import ModelAndMsg exposing (Model, Msg(..))
 
@@ -14,7 +14,8 @@ import Bulma.Form exposing (control, controlModifiers, controlTextArea, controlT
 import Bulma.Modifiers.Typography as Tg exposing (Weight(..), textColor, textCentered)
 import Html exposing (Attribute, Html, code, div, img, p, text)
 import Html.Attributes exposing (class, src, style, value)
-import ViewModel exposing (DetailViewModel, ParseResult, TreeStates)
+import View.Spinner exposing (halfCircleSpinner)
+import ViewModel exposing (DetailViewModel, ParseResult(..), TreeStates)
 
 
 
@@ -73,9 +74,7 @@ requestResponseDetailView model =
                 [ detailRequestView model vm
                 , (case vm.requestAndResponse.responseData of
                     Just data -> detailResponseView model vm data
-                    Nothing ->
-                        box []
-                            [ text "waiting response..." ]
+                    Nothing -> detailResponseWaitingView
                 )
                 ]
             Nothing ->
@@ -113,7 +112,7 @@ detailRequestView model vm =
                     case (bodyType contentType) of
                         Plain -> textBodyView body
                         Html -> textBodyView body
-                        Json -> jsonBodyView SetRequestBodyTreeViewState vm.requestBodyTreeStates body
+                        Json -> jsonBodyView (TreeViewStateUpdated Request) vm.requestBodyTreeStates body
                         JavaScript -> textBodyView body
                         Css -> textBodyView body
                         Image _ -> imageBodyView contentType body
@@ -147,7 +146,7 @@ detailResponseView model vm data =
                       case (bodyType contentType) of
                           Plain -> textBodyView body
                           Html -> textBodyView body
-                          Json -> jsonBodyView SetResponseBodyTreeViewState vm.responseBodyTreeStates body
+                          Json -> jsonBodyView (TreeViewStateUpdated Response) vm.responseBodyTreeStates body
                           JavaScript -> textBodyView body
                           Css -> textBodyView body
                           Image _ -> imageBodyView contentType body
@@ -157,6 +156,14 @@ detailResponseView model vm data =
               |> Maybe.map (\x -> [x])
               |> Maybe.withDefault []
             )
+        ]
+
+
+detailResponseWaitingView : Html Msg
+detailResponseWaitingView =
+    div []
+        [ text "waiting response..."
+        , halfCircleSpinner
         ]
 
 
@@ -194,10 +201,20 @@ jsonBodyView msg treeStates body =
             , colors = JsonTree.defaultColors
             }
     in
-    treeStates.parseResult
-        |> Result.map (\tree -> JsonTree.view tree treeConfig treeStates.treeState)
-        |> Result.withDefault (textBodyView body)
-        |> wrapWith ( div [ style "font-size" "87%", style "overflow" "hidden" ] )
+    case treeStates.parseResult of
+        Parsed (Ok tree) ->
+            JsonTree.view tree treeConfig treeStates.treeState
+            |> wrapWith ( div [ style "font-size" "87%", style "overflow" "hidden" ] )
+
+        Parsed (Err _) ->
+            textBodyView body
+
+        Parsing ->
+            div []
+                [ text "parsing..."
+                , halfCircleSpinner
+                ]
+
 
 
 textBodyView : String -> Html Msg

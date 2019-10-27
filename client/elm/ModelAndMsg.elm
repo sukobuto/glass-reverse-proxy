@@ -38,9 +38,10 @@ type Msg
     | UpdateDisplayItems
     | InfiniteListMsg InfiniteList.Model
     | Error String
-    | ViewRequestAndResponse Monitor.RequestAndResponse
-    | SetRequestBodyTreeViewState JsonTree.State
-    | SetResponseBodyTreeViewState JsonTree.State
+    | ShowDetail Monitor.RequestAndResponse
+    | UpdateDetail
+    | TreeViewParsed Monitor.RequestOrResponse ViewModel.ParseResult
+    | TreeViewStateUpdated Monitor.RequestOrResponse JsonTree.State
     | WindowResized Int Int
     | ClearRequestResponses
     | ToggleDarkMode

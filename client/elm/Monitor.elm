@@ -37,9 +37,14 @@ type alias ResponseData =
     }
 
 
+type RequestOrResponse
+    = Request
+    | Response
+
+
 type CommunicateEvent
-    = Request RequestData
-    | Response ResponseData
+    = RequestEvent RequestData
+    | ResponseEvent ResponseData
 
 
 type alias RequestAndResponse =
@@ -78,7 +83,7 @@ requestDecoder =
         (field "body" (nullable string))
         (field "start" posixDecoder)
         (field "end" posixDecoder)
-        |> map Request
+        |> map RequestEvent
 
 
 responseDecoder : Decoder CommunicateEvent
@@ -92,7 +97,7 @@ responseDecoder =
         (field "body" (nullable string))
         (field "start" posixDecoder)
         (field "end" posixDecoder)
-        |> map Response
+        |> map ResponseEvent
 
 
 headerEntryDecoder : Decoder HeaderEntry
@@ -113,13 +118,13 @@ posixDecoder =
 updateRequestAndResponseList : List RequestAndResponse -> CommunicateEvent -> List RequestAndResponse
 updateRequestAndResponseList items communicateEvent =
     case communicateEvent of
-        Request data ->
+        RequestEvent data ->
             { requestData = data
             , responseData = Nothing
             }
             :: items
 
-        Response data ->
+        ResponseEvent data ->
             attachRequestToResponse items data
 
 
@@ -135,6 +140,12 @@ attachResponseHelper responseData requestAndResponse =
     else
         requestAndResponse
 
+
+findRequestAndResponseById : String -> List RequestAndResponse -> Maybe RequestAndResponse
+findRequestAndResponseById id requestAndResponses =
+    requestAndResponses
+    |> List.filter (\x -> x.requestData.id == id)
+    |> List.head
 
 
 -- HELPER
