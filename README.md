@@ -29,3 +29,29 @@ options
     - designate the port number for proxy service
 - `-t <base url>` `--proxy-target=<base url>`
     - designate the url of the backend server
+
+## Use on Docker
+
+pull from [dockerhub](https://cloud.docker.com/u/sukobuto/repository/docker/sukobuto/glass-reverse-proxy)
+```
+docker pull sukobuto/glass-reverse-proxy
+```
+
+and then run
+```
+docker run -d --name grp \
+    -p 18000:18000 \
+    -p 8080:8080 \
+    glass-reverse-proxy
+```
+
+run with options
+```
+docker run -d --name grp \
+    -e "MONITOR_PORT=7777" \
+    -e "PROXY_PORT=8888" \
+    -e "PROXY_TARGET=8080" \
+    -p 7777:7777 \
+    -p 8888:8888 \
+    glass-reverse-proxy
+```

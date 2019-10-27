@@ -44,7 +44,7 @@ argv.option({
 
 const args = argv.run();
 main(
-    args.options['monitor-port'] || 8888,
-    args.options['proxy-port'] || 7777,
-    args.options['proxy-target'] || 'http://localhost:8080'
+    args.options['monitor-port'] || 18000,
+    args.options['proxy-port'] || 8080,
+    args.options['proxy-target'] || 'http://localhost:8000'
 );
