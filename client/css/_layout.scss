@@ -1,3 +1,7 @@
+html {
+  overflow-y: auto;
+}
+
 main {
   &.inverted {
     background: #dde9ee;
