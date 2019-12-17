@@ -9,13 +9,13 @@ import Task
 import Url
 import ViewModel exposing (openDetail, parseJson, updateDetailTreeResult, updateDetailTreeState)
 import WebSocket
-import Time exposing (Posix, utc)
+import Time exposing (utc)
 import InfiniteList
 import Browser.Events exposing (onResize)
 import Maybe.Extra as MaybeEx
 
 import ModelAndMsg exposing (Model, SocketStatus(..), Msg(..))
-import Monitor exposing (CommunicateEvent(..), HeaderEntry, RequestAndResponse, RequestData, RequestOrResponse(..), ResponseData, decodeRequestResponse)
+import Monitor exposing (CommunicateEvent(..), RequestOrResponse(..), ResponseData, decodeRequestResponse)
 import View.Layout
 import View.MonitorList
 
@@ -53,6 +53,7 @@ init flags url _ =
         wsUrl = "ws://" ++ url.host ++ wsPort
     in
     { location = url
+    , wsUrl = wsUrl
     , socketInfo = Unopened
     , requestAndResponses = []
     , requestAndResponseDisplayItems = []
@@ -90,7 +91,7 @@ update msg model =
             |> withNoCmd
 
         SocketReconnect ->
-            model |> withCmd (WebSocket.connect "ws://localhost:8888" [ "echo-protocol" ])
+            model |> withCmd (WebSocket.connect model.wsUrl [ "echo-protocol" ])
 
         SocketClosed unsentBytes ->
             { model | socketInfo = Closed unsentBytes }

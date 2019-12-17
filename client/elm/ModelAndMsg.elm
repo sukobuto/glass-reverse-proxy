@@ -12,6 +12,7 @@ import ViewModel
 
 type alias Model =
     { location : Url.Url
+    , wsUrl : String
     , socketInfo : SocketStatus
     , requestAndResponses: List Monitor.RequestAndResponse
     , requestAndResponseDisplayItems: List Monitor.RequestAndResponse
